@@ -31,9 +31,9 @@ def _entry(hass):
 
 
 @websocket_api.websocket_command({vol.Required("type"): "jk51_billing/config/get"})
+@websocket_api.require_admin
 @callback
 def get_config(hass, connection, msg):
-    connection.require_admin()
     try:
         data = dict(_entry(hass).data)
         result = {key: value for key, value in data.items() if key in FIELDS - SECRETS}
@@ -44,9 +44,9 @@ def get_config(hass, connection, msg):
 
 
 @websocket_api.websocket_command({vol.Required("type"): "jk51_billing/config/save", vol.Required("config"): dict})
+@websocket_api.require_admin
 @callback
 def save_config(hass, connection, msg):
-    connection.require_admin()
     try:
         entry = _entry(hass)
         incoming = msg["config"]
@@ -86,10 +86,10 @@ def save_config(hass, connection, msg):
     vol.Required("period"): vol.In(["daily", "weekly", "monthly", "quarterly"]),
     vol.Required("value"): str,
 })
+@websocket_api.require_admin
 @websocket_api.async_response
 async def send_test(hass, connection, msg):
     """Send an explicitly requested test using saved settings only."""
-    connection.require_admin()
     try:
         entry = _entry(hass)
         await async_run_action(hass, dict(entry.data), "manual_test",
