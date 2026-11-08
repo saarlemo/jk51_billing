@@ -124,6 +124,6 @@ async def async_setup_panel(hass: HomeAssistant):
     await panel_custom.async_register_panel(
         hass, webcomponent_name="jk51-billing-panel", frontend_url_path=PANEL,
         sidebar_title="Electricity billing", sidebar_icon="mdi:lightning-bolt",
-        module_url="/jk51_billing_panel/panel.js?v=5", require_admin=True,
+        module_url="/jk51_billing_panel/panel.js?v=6", require_admin=True,
     )
     hass.data[f"{DOMAIN}_panel_registered"] = True

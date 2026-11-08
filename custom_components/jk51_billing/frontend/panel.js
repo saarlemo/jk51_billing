@@ -26,6 +26,7 @@ class JK51BillingPanel extends HTMLElement {
       ["Credentials", null, "gmail_app_password", "Gmail app password", "password"],
       ["Credentials", null, "ha_url", "Home Assistant URL", "url"],
       ["Credentials", null, "ha_token", "Home Assistant long-lived token", "password"],
+      ["Electricity cost structure", null, "monthly_fee_eur", "Monthly fee (€)", "number"],
       ["Electricity cost structure", "Electricity", "electricity_cost_type", "Electricity cost type", "cost_type"],
       ["Electricity cost structure", "Electricity", "nordpool_entity", "Spot price statistics sensor (EUR/kWh)", "entity"],
       ["Electricity cost structure", "Electricity", "fixed_electricity_eur_per_kwh", "Fixed electricity price (€/kWh)", "number"],
@@ -35,7 +36,6 @@ class JK51BillingPanel extends HTMLElement {
       ["Electricity cost structure", "Transfer", "night_transfer_eur_per_kwh", "Night transfer (€/kWh)", "number"],
       ["Electricity cost structure", "Transfer", "day_transfer_start", "Day transfer starts", "time"],
       ["Electricity cost structure", "Transfer", "day_transfer_end", "Day transfer ends", "time"],
-      ["Electricity cost structure", "Transfer", "monthly_fee_eur", "Monthly fee (€)", "number"],
       ["Electricity cost structure", "Transfer", "monthly_peak_eur_per_kw", "Monthly peak fee (€/kW)", "number"],
     ];
     this.shadowRoot.innerHTML = `<style>
