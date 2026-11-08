@@ -79,10 +79,11 @@ integration setup and sidebar panel.
   statistics can be billed.
 - Calculations use hourly energy and hourly average spot prices. They do not
   calculate costs at a shorter settlement interval, such as 15 minutes.
-- Day transfer is applied from 07:00 to 22:00 and night transfer from 22:00 to
-  07:00 in the Home Assistant time zone. These times are not configurable.
-- The integration uses the configured rates, pricing type, VAT multiplier,
-  and margin for the whole report; it does not keep a history of contract
+- Day and night transfer times use the Home Assistant time zone and must be
+  set to whole hours because billing uses hourly statistics. The default day
+  period is 07:00–22:00; the night period covers the remaining hours.
+- The integration uses the configured rates, transfer times, pricing type,
+  VAT multiplier, and margin for the whole report; it does not keep a history of contract
   changes. A report for an earlier period may therefore need different settings.
 - The monthly peak is based on available one-hour energy readings. Missing data
   can understate the peak and the resulting fee.

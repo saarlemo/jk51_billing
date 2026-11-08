@@ -27,12 +27,14 @@
           "gmail_app_password": "Gmail app password",
           "ha_url": "Home Assistant URL",
           "ha_token": "Home Assistant long-lived access token",
-          "fixed_electricity_eur_per_kwh": "Fixed electricity price (€/kWh)"
+          "fixed_electricity_eur_per_kwh": "Fixed electricity price (€/kWh)",
+          "day_transfer_start": "Day transfer start",
+          "day_transfer_end": "Day transfer end"
         }
       }
     },
     "error": {
-      "invalid_settings": "Enter valid contract rates, pricing settings, and recipients."
+      "invalid_settings": "Enter valid contract rates, transfer times, pricing settings, and recipients."
     },
     "abort": {
       "single_instance_allowed": "Only one JK51 billing configuration is supported."

@@ -13,6 +13,8 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_CC,
     CONF_DAY_TRANSFER,
+    CONF_DAY_START,
+    CONF_DAY_END,
     CONF_ENERGY_ENTITY,
     CONF_ELECTRICITY_COST_TYPE,
     CONF_FIXED_ELECTRICITY,
@@ -31,6 +33,7 @@ from .const import (
     CONF_TEST_RECIPIENT,
     DOMAIN,
 )
+from .transfer import day_window
 
 
 def _schema(cost_type: str, defaults: dict | None = None) -> vol.Schema:
@@ -41,6 +44,12 @@ def _schema(cost_type: str, defaults: dict | None = None) -> vol.Schema:
         ),
         vol.Required(CONF_DAY_TRANSFER, default=defaults.get(CONF_DAY_TRANSFER, "0.050")): str,
         vol.Required(CONF_NIGHT_TRANSFER, default=defaults.get(CONF_NIGHT_TRANSFER, "0.030")): str,
+        vol.Required(CONF_DAY_START, default=defaults.get(CONF_DAY_START, "07:00")): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=[f"{hour:02d}:00" for hour in range(24)], mode=selector.SelectSelectorMode.DROPDOWN)
+        ),
+        vol.Required(CONF_DAY_END, default=defaults.get(CONF_DAY_END, "22:00")): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=[f"{hour:02d}:00" for hour in range(24)], mode=selector.SelectSelectorMode.DROPDOWN)
+        ),
         vol.Required(CONF_MONTHLY_FEE, default=defaults.get(CONF_MONTHLY_FEE, "5.00")): str,
         vol.Required(CONF_MONTHLY_PEAK, default=defaults.get(CONF_MONTHLY_PEAK, "2.00")): str,
         # VAT treatment is contract-specific. Force an explicit entry.
@@ -83,6 +92,7 @@ def _normalize(data: dict) -> dict:
 def _validate(data: dict) -> dict:
     """Normalize and validate finite nonnegative rates and recipients."""
     normalized = _normalize(data)
+    normalized[CONF_DAY_START], normalized[CONF_DAY_END] = day_window(normalized)
     numeric_fields = (
         CONF_DAY_TRANSFER,
         CONF_NIGHT_TRANSFER,

@@ -10,8 +10,8 @@ Meter data was unavailable for ${missing_power_hours} ${missing_power_unit}.${pr
 | --- | ---: | ---: | ---: |
 | ${electricity_label} | ${total_kwh} kWh | ${weighted_spot_eur_kwh} €/kWh${price_qualifier} | ${total_spot_eur} € |
 | Electricity margin | ${total_kwh} kWh | ${margin_rate_eur_kwh} €/kWh | ${total_margin_eur} € |
-| Day transfer (07:00–22:00) | ${day_kwh} kWh | ${day_rate_eur_kwh} €/kWh | ${day_transfer_eur} € |
-| Night transfer (22:00–07:00) | ${night_kwh} kWh | ${night_rate_eur_kwh} €/kWh | ${night_transfer_eur} € |
+| Day transfer (${day_transfer_start}–${day_transfer_end}) | ${day_kwh} kWh | ${day_rate_eur_kwh} €/kWh | ${day_transfer_eur} € |
+| Night transfer (${day_transfer_end}–${day_transfer_start}) | ${night_kwh} kWh | ${night_rate_eur_kwh} €/kWh | ${night_transfer_eur} € |
 ${pmax_rows}
 | Fixed monthly fee | ${fixed_month_count} months | ${monthly_fee_rate} €/month | ${fixed_total_eur} € |
 | **Total** | | | **${total_eur} €** |

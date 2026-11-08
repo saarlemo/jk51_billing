@@ -44,7 +44,7 @@ class ConfigFlowTests(unittest.TestCase):
             'homeassistant': module('homeassistant', config_entries=module('homeassistant.config_entries', ConfigFlow=FakeFlow)),
             'homeassistant.core': module('homeassistant.core', callback=lambda fn: fn),
             'homeassistant.helpers': module('homeassistant.helpers', selector=MagicMock()),
-            'jk51_flow_test': module('jk51_flow_test', __path__=[]),
+            'jk51_flow_test': module('jk51_flow_test', __path__=[str(root)]),
             'jk51_flow_test.const': const,
         }
         cls.module_patch = patch.dict(sys.modules, modules)
@@ -80,6 +80,8 @@ class ConfigFlowTests(unittest.TestCase):
         result = asyncio.run(flow.async_step_setup(data))
         self.assertEqual(result['data']['electricity_cost_type'], 'fixed')
         self.assertEqual(result['data']['fixed_electricity_eur_per_kwh'], '0.10')
+        self.assertEqual(result['data']['day_transfer_start'], '07:00')
+        self.assertEqual(result['data']['day_transfer_end'], '22:00')
         data['fixed_electricity_eur_per_kwh'] = '-1'
         result = asyncio.run(flow.async_step_setup(data))
         self.assertEqual(result['errors']['base'], 'invalid_settings')

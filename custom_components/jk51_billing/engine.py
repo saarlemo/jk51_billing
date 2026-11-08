@@ -19,6 +19,8 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 
+from .transfer import day_window, is_day_hour
+
 TEMPLATE_ROOT = Path(__file__).resolve().parent
 ROOT = TEMPLATE_ROOT
 CFG = {}
@@ -256,6 +258,7 @@ def previous_quarter():
 
 def build_report(start, end, identifier, include_monthly_fees=True, check_sent=True, period_label=None):
     validate_hour_alignment(start, end)
+    day_start, day_end = day_window(CFG)
     db = database()
     if check_sent and db.execute("SELECT 1 FROM sent WHERE quarter=?", (identifier,)).fetchone():
         raise RuntimeError("This quarter is already marked sent: " + identifier)
@@ -301,7 +304,7 @@ def build_report(start, end, identifier, include_monthly_fees=True, check_sent=T
         else:
             reason = "complete"
         local_start = start_dt.astimezone(LOCAL)
-        tariff = "night" if local_start.hour >= 22 or local_start.hour < 7 else "day"
+        tariff = "day" if is_day_hour(local_start, day_start, day_end) else "night"
         transfer_rate = night_fee if tariff == "night" else day_fee
         if reason != "complete":
             missing_counts[reason] += 1
@@ -424,6 +427,8 @@ def build_report(start, end, identifier, include_monthly_fees=True, check_sent=T
         "total_margin_eur": money(margin_total),
         "day_kwh": f"{day_kwh_total:.3f}",
         "night_kwh": f"{night_kwh_total:.3f}",
+        "day_transfer_start": day_start,
+        "day_transfer_end": day_end,
         "day_rate_eur_kwh": str(day_fee),
         "night_rate_eur_kwh": str(night_fee),
         "day_transfer_eur": money(day_transfer_total),

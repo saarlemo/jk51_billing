@@ -15,12 +15,17 @@ class TemplateLanguageTests(unittest.TestCase):
         # Template tests do not need Home Assistant's aiohttp dependency.
         cls.previous_aiohttp = sys.modules.get("aiohttp")
         sys.modules.setdefault("aiohttp", types.ModuleType("aiohttp"))
-        spec = importlib.util.spec_from_file_location("jk51_billing_test", SOURCE / "engine.py")
+        package = types.ModuleType("jk51_billing_test")
+        package.__path__ = [str(SOURCE)]
+        sys.modules["jk51_billing_test"] = package
+        spec = importlib.util.spec_from_file_location("jk51_billing_test.engine", SOURCE / "engine.py")
         cls.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.module)
 
     @classmethod
     def tearDownClass(cls):
+        sys.modules.pop("jk51_billing_test.transfer", None)
+        sys.modules.pop("jk51_billing_test", None)
         if cls.previous_aiohttp is None:
             sys.modules.pop("aiohttp", None)
         else:

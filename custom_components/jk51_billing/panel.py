@@ -11,11 +11,12 @@ from homeassistant.exceptions import HomeAssistantError
 from .runtime import async_run_action
 
 from .const import DOMAIN
+from .transfer import day_window
 
 PANEL = "jk51-billing"
 FIELDS = {
     "ha_url", "ha_token", "energy_entity", "nordpool_entity", "electricity_cost_type", "fixed_electricity_eur_per_kwh",
-    "day_transfer_eur_per_kwh", "night_transfer_eur_per_kwh", "monthly_fee_eur",
+    "day_transfer_eur_per_kwh", "night_transfer_eur_per_kwh", "day_transfer_start", "day_transfer_end", "monthly_fee_eur",
     "monthly_peak_eur_per_kw", "electricity_margin_eur_per_kwh", "spot_vat_multiplier",
     "recipient", "cc", "test_recipient", "test_cc", "billing_periods", "gmail_user", "gmail_app_password", "language",
 }
@@ -73,6 +74,9 @@ def save_config(hass, connection, msg):
             elif not isinstance(value, str):
                 raise ValueError(f"{key} must be text")
             data[key] = value
+        day_start, day_end = day_window(data)
+        if "day_transfer_start" in incoming or "day_transfer_end" in incoming:
+            data["day_transfer_start"], data["day_transfer_end"] = day_start, day_end
         cost_type = data.get("electricity_cost_type", "spot")
         if cost_type not in ("spot", "fixed"):
             raise ValueError("Choose spot or fixed electricity pricing")
@@ -120,6 +124,6 @@ async def async_setup_panel(hass: HomeAssistant):
     await panel_custom.async_register_panel(
         hass, webcomponent_name="jk51-billing-panel", frontend_url_path=PANEL,
         sidebar_title="Electricity billing", sidebar_icon="mdi:lightning-bolt",
-        module_url="/jk51_billing_panel/panel.js?v=3", require_admin=True,
+        module_url="/jk51_billing_panel/panel.js?v=4", require_admin=True,
     )
     hass.data[f"{DOMAIN}_panel_registered"] = True

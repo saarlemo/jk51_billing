@@ -21,6 +21,8 @@ class JK51BillingPanel extends HTMLElement {
       ["language", "Email template language", "language"],
       ["day_transfer_eur_per_kwh", "Day transfer (€/kWh)", "number"],
       ["night_transfer_eur_per_kwh", "Night transfer (€/kWh)", "number"],
+      ["day_transfer_start", "Day transfer starts", "time"],
+      ["day_transfer_end", "Day transfer ends", "time"],
       ["electricity_margin_eur_per_kwh", "Electricity margin (€/kWh)", "number"],
       ["monthly_fee_eur", "Monthly fee (€)", "number"],
       ["monthly_peak_eur_per_kw", "Monthly peak fee (€/kW)", "number"],
@@ -52,9 +54,9 @@ class JK51BillingPanel extends HTMLElement {
         for (const [value, text] of [["spot", "Spot"], ["fixed", "Fixed"]]) { const option = document.createElement("option"); option.value=value; option.textContent=text; input.append(option); }
       } else if (type === "language") {
         for (const [value, text] of [["fi", "Suomi"], ["en", "English"]]) { const option = document.createElement("option"); option.value=value; option.textContent=text; input.append(option); }
-      } else { input.type=type; if (type === "number") { input.min="0"; input.step="any"; } if (type === "password") input.autocomplete="new-password"; }
+      } else { input.type=type; if (type === "number") { input.min="0"; input.step="any"; } if (type === "time") { input.step="3600"; input.required=true; } if (type === "password") input.autocomplete="new-password"; }
       const value = this.config[name];
-      if (type !== "password") input.value = Array.isArray(value) ? value.join(", ") : (value ?? (name === "language" ? "fi" : name === "electricity_cost_type" ? "spot" : ""));
+      if (type !== "password") input.value = Array.isArray(value) ? value.join(", ") : (value ?? (name === "language" ? "fi" : name === "electricity_cost_type" ? "spot" : name === "day_transfer_start" ? "07:00" : name === "day_transfer_end" ? "22:00" : ""));
       if (type === "password" && (this.config.configured_secrets || []).includes(name)) input.placeholder = "Saved; leave blank to keep";
       wrapper.append(input); form.append(wrapper);
     }

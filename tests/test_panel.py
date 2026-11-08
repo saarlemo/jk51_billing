@@ -47,7 +47,7 @@ class PanelTests(unittest.TestCase):
             'homeassistant.components.http': module('homeassistant.components.http', StaticPathConfig=MagicMock()),
             'homeassistant.core': module('homeassistant.core', HomeAssistant=object, callback=lambda fn: fn),
             'homeassistant.exceptions': module('homeassistant.exceptions', HomeAssistantError=RuntimeError),
-            'jk51_panel_test': module('jk51_panel_test', __path__=[]),
+            'jk51_panel_test': module('jk51_panel_test', __path__=[str(Path(__file__).resolve().parents[1] / 'custom_components' / 'jk51_billing')]),
             'jk51_panel_test.const': module('jk51_panel_test.const', DOMAIN='jk51_billing'),
             'jk51_panel_test.runtime': module('jk51_panel_test.runtime', async_run_action=AsyncMock()),
         }
@@ -101,6 +101,17 @@ class PanelTests(unittest.TestCase):
             'electricity_cost_type': 'spot'}})
         self.hass.config_entries.async_update_entry.assert_not_called()
         self.assertIn('spot price', self.connection.send_error.call_args.args[2])
+
+    def test_transfer_times_are_saved_and_invalid_times_rejected(self):
+        self.panel.save_config(self.hass, self.connection, {'id': 6, 'config': {
+            'day_transfer_start': '06:00', 'day_transfer_end': '21:00'}})
+        data = self.hass.config_entries.async_update_entry.call_args.kwargs['data']
+        self.assertEqual((data['day_transfer_start'], data['day_transfer_end']), ('06:00', '21:00'))
+        self.hass.config_entries.async_update_entry.reset_mock()
+        self.panel.save_config(self.hass, self.connection, {'id': 7, 'config': {
+            'day_transfer_start': '06:30', 'day_transfer_end': '21:00'}})
+        self.hass.config_entries.async_update_entry.assert_not_called()
+        self.assertIn('whole hours', self.connection.send_error.call_args.args[2])
 
     def test_non_admin_cannot_access_any_panel_command(self):
         self.connection.user.is_admin = False

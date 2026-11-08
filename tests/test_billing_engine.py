@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from tempfile import TemporaryDirectory
 import unittest
 import sys
+import types
 from unittest.mock import MagicMock
 
 try:
@@ -17,7 +18,10 @@ except ModuleNotFoundError:
     sys.modules["aiohttp"] = MagicMock()
 
 ENGINE_PATH = Path(__file__).resolve().parents[1] / 'custom_components' / 'jk51_billing' / 'engine.py'
-spec = importlib.util.spec_from_file_location('jk51_engine_test', ENGINE_PATH)
+package = types.ModuleType('jk51_engine_test')
+package.__path__ = [str(ENGINE_PATH.parent)]
+sys.modules['jk51_engine_test'] = package
+spec = importlib.util.spec_from_file_location('jk51_engine_test.engine', ENGINE_PATH)
 engine = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(engine)
 
@@ -54,6 +58,47 @@ class BillingEngineTests(unittest.TestCase):
         self.assertIn('9.32', body)
         self.assertIn('missing_energy', csv_path.read_text())
         self.assertIn('2.000 kWh', body)
+
+    def test_configurable_transfer_hours_apply_to_bills_and_labels(self):
+        engine.CFG.update(day_transfer_start='06:00', day_transfer_end='09:00',
+                          electricity_cost_type='fixed', fixed_electricity_eur_per_kwh='0')
+        start = datetime(2026, 1, 5, 5, tzinfo=engine.LOCAL).astimezone(timezone.utc)
+        db = engine.database()
+        for offset in range(5):
+            hour = start + timedelta(hours=offset)
+            db.execute('INSERT INTO hours VALUES (?,?,?,?,?)',
+                       (hour.isoformat(), (hour + timedelta(hours=1)).isoformat(), '1', None, 'complete'))
+        db.commit(); db.close()
+        db, _, csv_path, body = engine.build_report(start, start + timedelta(hours=5), 'custom', include_monthly_fees=False)
+        db.close()
+        self.assertIn('Day transfer (06:00–09:00) | 3.000 kWh | 0.05 €/kWh | 0.15 €', body)
+        self.assertIn('Night transfer (09:00–06:00) | 2.000 kWh | 0.03 €/kWh | 0.06 €', body)
+        self.assertEqual([line.split(',')[6] for line in csv_path.read_text().splitlines()[1:]],
+                         ['night', 'day', 'day', 'day', 'night'])
+        engine.CFG['language'] = 'fi'
+        db, _, _, finnish = engine.build_report(start, start + timedelta(hours=5), 'custom', include_monthly_fees=False)
+        db.close()
+        self.assertIn('Päiväsiirto (06:00–09:00)', finnish)
+        self.assertIn('Yösiirto (09:00–06:00)', finnish)
+
+    def test_transfer_hours_handle_midnight_and_repeated_dst_hour(self):
+        for hour, expected in [(21, False), (22, True), (0, True), (5, True), (6, False)]:
+            local = datetime(2026, 1, 1, hour, tzinfo=engine.LOCAL)
+            with self.subTest(hour=hour):
+                self.assertEqual(engine.is_day_hour(local, '22:00', '06:00'), expected)
+        for utc_hour in (0, 1):
+            local = datetime(2026, 10, 25, utc_hour, tzinfo=timezone.utc).astimezone(engine.LOCAL)
+            self.assertEqual(local.hour, 3)
+            self.assertTrue(engine.is_day_hour(local, '03:00', '04:00'))
+
+    def test_transfer_times_validate_defaults_and_boundaries(self):
+        self.assertEqual(engine.day_window({}), ('07:00', '22:00'))
+        self.assertEqual(engine.day_window({'day_transfer_start': '06:00:00',
+                                            'day_transfer_end': '23:00:00'}), ('06:00', '23:00'))
+        for values in [{'day_transfer_start': '06:30'}, {'day_transfer_start': '24:00'},
+                       {'day_transfer_start': '07:00', 'day_transfer_end': '07:00'}]:
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                engine.day_window(values)
 
     def test_fixed_pricing_uses_fixed_rate_and_needs_no_spot_history(self):
         end = self.start + timedelta(hours=2)
