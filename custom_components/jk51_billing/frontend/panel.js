@@ -32,7 +32,7 @@ class JK51BillingPanel extends HTMLElement {
       :host{display:block;color:var(--primary-text-color);background:var(--primary-background-color);min-height:100%;font-family:var(--paper-font-body1_-_font-family, sans-serif)}
       header{padding:16px 24px;background:var(--app-header-background-color,var(--primary-color));color:var(--app-header-text-color,white);display:flex;align-items:center;gap:16px;font-size:20px}
       header button{background:none;border:0;color:inherit;font-size:24px;cursor:pointer}
-      main{max-width:720px;margin:auto;padding:24px} form{display:grid;gap:16px} section{display:grid;gap:16px;margin-top:12px} section h2{margin:0;font-size:20px;font-weight:600} .test-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:12px} @media(max-width:420px){.test-row{grid-template-columns:1fr}} .periods{display:flex;gap:16px;flex-wrap:wrap}.periods label{display:flex;align-items:center;gap:5px}.periods input{width:auto} label{display:grid;gap:6px} input,select{box-sizing:border-box;width:100%;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:4px;font-size:16px} button.save,button.send-test{padding:12px;background:var(--primary-color);color:var(--text-primary-color,white);border:0;border-radius:4px;cursor:pointer} .notice{color:var(--secondary-text-color)}
+      main{max-width:720px;margin:auto;padding:24px} form{display:grid;gap:16px} section{display:grid;gap:16px;margin-top:12px} section h2{margin:0;font-size:20px;font-weight:600} .test-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:12px} .test-row label,.test-row input,.test-row select,.test-row button{min-width:0} .test-row button{white-space:normal;overflow-wrap:anywhere} @media(max-width:420px){main{padding:16px}.test-row{gap:8px}} .periods{display:flex;gap:16px;flex-wrap:wrap}.periods label{display:flex;align-items:center;gap:5px}.periods input{width:auto} label{display:grid;gap:6px} input,select{box-sizing:border-box;width:100%;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:4px;font-size:16px} button.save,button.send-test{padding:12px;background:var(--primary-color);color:var(--text-primary-color,white);border:0;border-radius:4px;cursor:pointer} .notice{color:var(--secondary-text-color)}
     </style><header><button type="button" aria-label="Open sidebar">☰</button>Electricity billing</header><main><form></form><p role="status"></p></main>`;
     this.shadowRoot.querySelector("header button").onclick = () => this.dispatchEvent(new CustomEvent("hass-toggle-menu", {bubbles:true, composed:true}));
     const form = this.shadowRoot.querySelector("form");
@@ -67,7 +67,7 @@ class JK51BillingPanel extends HTMLElement {
         label.append(span, input); section.append(label);
       }
       if (prefix === "billing_periods") {
-        const title = document.createElement("span"); title.textContent = "Automatic emails at 04:30 Helsinki time"; section.append(title);
+        const title = document.createElement("span"); title.textContent = "Automatic emails at 04:30 Home Assistant time"; section.append(title);
         const periods = document.createElement("div"); periods.className = "periods";
         for (const period of ["monthly", "quarterly"]) {
           const label = document.createElement("label"); const input = document.createElement("input");
@@ -81,7 +81,7 @@ class JK51BillingPanel extends HTMLElement {
         section.append(notice);
       } else {
         const hint = document.createElement("small"); hint.className = "notice";
-        hint.textContent = "Choose a Helsinki calendar period. Save settings before sending; the saved test recipients and CC will be used.";
+        hint.textContent = "Choose a calendar period. Save settings before sending; the saved test recipients and CC will be used.";
         section.append(hint);
         for (const [period, labelText, inputType] of [
           ["monthly", "Month", "month"], ["quarterly", "Quarter", "quarter"]

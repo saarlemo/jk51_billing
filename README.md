@@ -39,7 +39,7 @@ settings first: test reports use the saved test recipients and CC. Reports
 include monthly fixed and peak fees. Test emails are sent only when requested.
 
 The **Billing** section has checkboxes for automatic production invoices at
-04:30 Helsinki time for the preceding month or quarter. No period is enabled by
+04:30 in the Home Assistant time zone for the preceding month or quarter. No period is enabled by
 default.
 
 **Multiple production periods overlap:** selecting monthly and quarterly, for
@@ -72,6 +72,7 @@ integration setup and sidebar panel.
 - Configure the spot price VAT multiplier for the actual sensor and contract.
 - The monthly peak fee uses the largest one-hour average, not instantaneous or
   15-minute demand.
-- The calculations use the Europe/Helsinki time zone and historical Home
-  Assistant statistics.
+- Billing periods and tariffs use the Home Assistant time zone and historical
+  statistics. Periods with non-hour UTC offsets are not supported by hourly
+  statistics and are rejected.
 

@@ -5,6 +5,7 @@ from datetime import date
 from unittest.mock import patch, AsyncMock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from tempfile import TemporaryDirectory
 import unittest
 import sys
@@ -25,7 +26,8 @@ class BillingEngineTests(unittest.TestCase):
     def setUp(self):
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.old = (engine.CFG, engine.DB, engine.REPORTS)
+        self.old = (engine.CFG, engine.DB, engine.REPORTS, engine.LOCAL)
+        engine.LOCAL = ZoneInfo("Europe/Helsinki")
         self.addCleanup(self.restore)
         root = Path(self.temp.name)
         engine.DB = root / 'ledger.sqlite3'
@@ -37,7 +39,7 @@ class BillingEngineTests(unittest.TestCase):
         self.start = datetime(2026, 1, 1, 7, tzinfo=timezone.utc)
 
     def restore(self):
-        engine.CFG, engine.DB, engine.REPORTS = self.old
+        engine.CFG, engine.DB, engine.REPORTS, engine.LOCAL = self.old
 
     def test_report_includes_fees_and_excludes_missing_hour(self):
         db = engine.database()
@@ -103,6 +105,40 @@ class BillingEngineTests(unittest.TestCase):
         self.assertEqual((str(start.date()), str(end.date()), ident), ('2025-12-01', '2026-01-01', '2025-12'))
         with self.assertRaises(RuntimeError):
             engine.previous_period('monthly', date(2026, 1, 2))
+
+    def test_configured_timezone_changes_periods_and_tariffs(self):
+        now = datetime(2026, 11, 8, 12, 36, tzinfo=timezone.utc)
+        engine.LOCAL = ZoneInfo('America/New_York')
+        start, end = engine.parse_test_period('monthly', '2026-11', now)
+        self.assertEqual(start, datetime(2026, 11, 1, 4, tzinfo=timezone.utc))
+        self.assertEqual(end, datetime(2026, 11, 8, 12, tzinfo=timezone.utc))
+        # 12 UTC is 07 local after the autumn clock change.
+        start = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
+        db = engine.database()
+        db.execute('INSERT INTO hours VALUES (?,?,?,?,?)',
+                   (start.isoformat(), (start + timedelta(hours=1)).isoformat(), '2', '0.1', 'complete'))
+        db.commit(); db.close()
+        db, _, _, body = engine.build_report(start, start + timedelta(hours=1), 'sample', include_monthly_fees=False)
+        db.close()
+        self.assertIn('Day transfer (07:00–22:00) | 2.000 kWh', body)
+
+    def test_non_hour_offset_does_not_produce_inaccurate_bill(self):
+        engine.LOCAL = ZoneInfo('Asia/Kathmandu')
+        with self.assertRaisesRegex(RuntimeError, 'non-hour UTC offset'):
+            engine.build_report(self.start, self.start + timedelta(hours=1), 'sample')
+
+    def test_timezone_is_taken_from_home_assistant_and_restored(self):
+        original = engine.LOCAL
+        with patch.object(engine, 'collect', new_callable=AsyncMock) as collect:
+            engine._run_action_sync({}, 'collect', Path(self.temp.name), timezone_name='America/New_York')
+            self.assertEqual(collect.await_count, 1)
+        self.assertIs(engine.LOCAL, original)
+        seen = []
+        async def capture():
+            seen.append(engine.LOCAL.key)
+        with patch.object(engine, 'collect', side_effect=capture):
+            engine._run_action_sync({}, 'collect', Path(self.temp.name), timezone_name='America/New_York')
+        self.assertEqual(seen, ['America/New_York'])
 
     def test_test_cc_isolated_from_production(self):
         engine.CFG.update(gmail_user="sender@example.com", gmail_app_password="secret",

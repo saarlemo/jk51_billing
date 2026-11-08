@@ -22,7 +22,7 @@ import aiohttp
 TEMPLATE_ROOT = Path(__file__).resolve().parent
 ROOT = TEMPLATE_ROOT
 CFG = {}
-LOCAL = ZoneInfo("Europe/Helsinki")
+LOCAL = UTC = timezone.utc
 UTC = timezone.utc
 DB = ROOT / "ledger.sqlite3"
 REPORTS = ROOT / "reports"
@@ -177,12 +177,26 @@ def rows_for(stats, entity):
     return {key_timestamp(r).isoformat(): r for r in stats.get(entity, [])}
 
 
+def validate_hour_alignment(start, end):
+    """Reject periods whose local hours cannot be represented by hourly statistics."""
+    cursor = start.astimezone(UTC)
+    stop = end.astimezone(UTC)
+    while cursor < stop:
+        offset = cursor.astimezone(LOCAL).utcoffset()
+        if offset is None or offset.total_seconds() % 3600:
+            raise RuntimeError("The configured time zone has a non-hour UTC offset during this period; hourly statistics cannot represent the billing hours accurately")
+        cursor += timedelta(hours=1)
+    if start.astimezone(UTC).minute or end.astimezone(UTC).minute:
+        raise RuntimeError("Billing periods must align with hourly statistics")
+
+
 async def collect(start=None, end=None):
     require_config()
     now = datetime.now(UTC)
     end = end or now.replace(minute=0, second=0, microsecond=0)
     # Refresh 72 hours to recover automatically after brief outages.
     start = start or end - timedelta(hours=72)
+    validate_hour_alignment(start, end)
     values = await statistics(start, end)
     energy = rows_for(values, CFG["energy_entity"])
     prices = rows_for(values, CFG["nordpool_entity"])
@@ -227,6 +241,7 @@ def previous_quarter():
 
 
 def build_report(start, end, identifier, include_monthly_fees=True, check_sent=True, period_label=None):
+    validate_hour_alignment(start, end)
     db = database()
     if check_sent and db.execute("SELECT 1 FROM sent WHERE quarter=?", (identifier,)).fetchone():
         raise RuntimeError("This quarter is already marked sent: " + identifier)
@@ -372,7 +387,7 @@ def build_report(start, end, identifier, include_monthly_fees=True, check_sent=T
     body = mail_template(f"invoice_email-{language}.md", {
         "report_type": (("lasku" if include_monthly_fees else "testi (ei perusmaksua)")
                         if language == "fi" else ("invoice" if include_monthly_fees else "test report (no monthly fees)")),
-        "period": period_label or f"{start.date()} - {(end - timedelta(days=1)).date()}",
+        "period": period_label or f"{start.astimezone(LOCAL).date()} - {(end.astimezone(LOCAL) - timedelta(days=1)).date()}",
         "weighted_spot_eur_kwh": precise(spot_total / quarter_kwh) if quarter_kwh else "0.00000",
         "total_spot_eur": money(spot_total),
         "margin_rate_eur_kwh": str(margin_rate),
@@ -497,7 +512,7 @@ async def scheduled_report(period, is_test):
 
 
 def parse_test_period(period, value, now=None):
-    """Convert a selected Helsinki calendar period to UTC boundaries."""
+    """Convert a selected local calendar period to UTC boundaries."""
     try:
         if period == "monthly" and (match := re.fullmatch(r"(\d{4})-(\d{2})", value)):
             first = date(int(match[1]), int(match[2]), 1)
@@ -539,13 +554,14 @@ async def manual_test_report(period, value):
         db.close()
 
 
-def _run_action_sync(config, action, data_dir, start=None, end=None):
+def _run_action_sync(config, action, data_dir, start=None, end=None, timezone_name="UTC"):
     """Run one serialized billing action in an executor thread."""
-    global CFG, ROOT, DB, REPORTS
+    global CFG, ROOT, DB, REPORTS, LOCAL
     with _ACTION_LOCK:
-        old = CFG, ROOT, DB, REPORTS
+        old = CFG, ROOT, DB, REPORTS, LOCAL
         try:
             CFG = dict(config)
+            LOCAL = ZoneInfo(timezone_name)
             ROOT = Path(data_dir).expanduser().resolve()
             ROOT.mkdir(parents=True, exist_ok=True)
             DB = ROOT / "ledger.sqlite3"
@@ -561,7 +577,7 @@ def _run_action_sync(config, action, data_dir, start=None, end=None):
             else:
                 raise RuntimeError(f"Unknown JK51 billing action: {action}")
         finally:
-            CFG, ROOT, DB, REPORTS = old
+            CFG, ROOT, DB, REPORTS, LOCAL = old
 
 
 async def async_run_action(hass, config, action, data_dir, start=None, end=None):
@@ -573,4 +589,4 @@ async def async_run_action(hass, config, action, data_dir, start=None, end=None)
         action: Billing action to run.
         data_dir: Directory for the ledger database and generated reports.
     """
-    await hass.async_add_executor_job(_run_action_sync, config, action, data_dir, start, end)
+    await hass.async_add_executor_job(_run_action_sync, config, action, data_dir, start, end, hass.config.time_zone)

@@ -4,20 +4,18 @@ from __future__ import annotations
 
 from pathlib import Path
 import logging
-from zoneinfo import ZoneInfo
 
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
-from homeassistant.helpers.event import async_track_utc_time_change
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, SERVICE_COLLECT, SERVICE_INVOICE
 from .runtime import async_run_action
 
 _LOGGER = logging.getLogger(__name__)
-_LOCAL = ZoneInfo("Europe/Helsinki")
 _DATA_ENTRIES = "entries"
 _SERVICES_REGISTERED = "services_registered"
 _SERVICE_SCHEMA = vol.Schema({vol.Optional("config_entry_id"): str})
@@ -69,9 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_setup_panel(hass)
 
     async def dispatch(now):
-        local = now.astimezone(_LOCAL)
-        if local.hour != 4:
-            return
+        local = now
         due = set()
         if local.day == 1:
             due.add("monthly")
@@ -90,8 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     def schedule_tick(now):
         hass.async_create_task(dispatch(now))
 
-    # Helsinki is UTC+2 or UTC+3, so :30 UTC always includes 04:30 local.
-    entry.async_on_unload(async_track_utc_time_change(hass, schedule_tick, minute=30, second=0))
+    entry.async_on_unload(async_track_time_change(hass, schedule_tick, hour=4, minute=30, second=0))
     return True
 
 
