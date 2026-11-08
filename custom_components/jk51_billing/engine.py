@@ -305,7 +305,19 @@ def build_report(start, end, identifier, include_monthly_fees=True, check_sent=T
             "complete", str(margin_rate), precise(margin_cost)])
     if not complete_hours:
         db.close()
-        raise RuntimeError(f"No billable hours in {identifier}; email blocked")
+        missing_energy = missing_counts["missing_energy"] + missing_counts["missing_both"]
+        missing_price = missing_counts["missing_price"] + missing_counts["missing_both"]
+        first_day = start.astimezone(LOCAL).date()
+        local_end = end.astimezone(LOCAL)
+        last_day = local_end.date() - (timedelta(days=1) if local_end.hour == 0 else timedelta())
+        raise RuntimeError(
+            f"No billable hours for {first_day}–{last_day}. "
+            f"Energy statistics ({CFG.get('energy_entity', 'not configured')}) "
+            f"missing or invalid for {missing_energy}/{expected} hours; "
+            f"price statistics ({CFG.get('nordpool_entity', 'not configured')}) "
+            f"missing or invalid for {missing_price}/{expected} hours. "
+            "Check these sensors' long-term statistics for the selected period."
+        )
     REPORTS.mkdir(exist_ok=True)
     out = REPORTS / f"JK51_{identifier}_hourly.csv"
     with out.open("w", encoding="utf-8", newline="") as f:
@@ -433,39 +445,11 @@ async def invoice():
     print(f"Sent {ident} to {CFG['recipient']}, cc {CFG.get('cc', [])}")
 
 
-async def test_day():
-    """Generate yesterday's report and email it only to test_recipient."""
-    require_config(test_email=True)
-    today = datetime.now(LOCAL).date()
-    end = datetime(today.year, today.month, today.day, tzinfo=LOCAL)
-    start = end - timedelta(days=1)
-    await collect(start.astimezone(UTC), end.astimezone(UTC))
-    ident = start.strftime("TEST-%Y-%m-%d")
-    db, _, csv_path, body = build_report(
-        start, end, ident, include_monthly_fees=False, check_sent=False)
-    summary = REPORTS / f"JK51_{ident}_summary.txt"
-    summary.write_text(body, encoding="utf-8")
-    db.close()
-    send_email(ident, body, csv_path, CFG["test_recipient"], is_test=True)
-    print(body)
-    print(f"Daily test sent to {CFG['test_recipient']}; files: {summary} and {csv_path}")
-
-
-
 def previous_period(period, today=None):
     """Return the last complete local calendar period and a stable invoice ID."""
     today = today or datetime.now(LOCAL).date()
     end = datetime(today.year, today.month, today.day, tzinfo=LOCAL)
-    if period == "daily":
-        start = end - timedelta(days=1)
-        identifier = start.strftime("%Y-%m-%d")
-    elif period == "weekly":
-        if today.weekday() != 0:
-            raise RuntimeError("Weekly billing runs on Monday")
-        start = end - timedelta(days=7)
-        iso = start.isocalendar()
-        identifier = f"{iso.year}-W{iso.week:02d}"
-    elif period == "monthly":
+    if period == "monthly":
         if today.day != 1:
             raise RuntimeError("Monthly billing runs on the first day of the month")
         year, month = (today.year - 1, 12) if today.month == 1 else (today.year, today.month - 1)
@@ -503,11 +487,6 @@ async def scheduled_report(period, is_test):
     db, _, csv_path, body = build_report(
         start, end, identifier, include_monthly_fees=period in ("monthly", "quarterly"))
     try:
-        if period in ("daily", "weekly"):
-            note = ("Monthly fixed and peak fees are not included in this report."
-                    if configured_language() == "en" else
-                    "Kuukausittaista perus- ja tehomaksua ei sisällytetä tähän raporttiin.")
-            body += "\n\n" + note + "\n"
         (REPORTS / f"JK51_{identifier}_summary.txt").write_text(body, encoding="utf-8")
         send_email(identifier, body, csv_path,
                    CFG["test_recipient"] if is_test else CFG["recipient"], is_test=is_test)
@@ -518,15 +497,9 @@ async def scheduled_report(period, is_test):
 
 
 def parse_test_period(period, value, now=None):
-    """Convert a selected completed Helsinki calendar period to UTC boundaries."""
+    """Convert a selected Helsinki calendar period to UTC boundaries."""
     try:
-        if period == "daily" and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-            first = date.fromisoformat(value)
-            last = first + timedelta(days=1)
-        elif period == "weekly" and (match := re.fullmatch(r"(\d{4})-W(\d{2})", value)):
-            first = date.fromisocalendar(int(match[1]), int(match[2]), 1)
-            last = first + timedelta(days=7)
-        elif period == "monthly" and (match := re.fullmatch(r"(\d{4})-(\d{2})", value)):
+        if period == "monthly" and (match := re.fullmatch(r"(\d{4})-(\d{2})", value)):
             first = date(int(match[1]), int(match[2]), 1)
             last = date(first.year + (first.month == 12), first.month % 12 + 1, 1)
         elif period == "quarterly" and (match := re.fullmatch(r"(\d{4})-Q([1-4])", value)):
@@ -536,32 +509,29 @@ def parse_test_period(period, value, now=None):
         else:
             raise ValueError
     except (TypeError, ValueError, OverflowError):
-        raise ValueError("Choose a valid day, week, month or quarter") from None
+        raise ValueError("Choose a valid month or quarter") from None
     now = now or datetime.now(UTC)
-    if last > now.astimezone(LOCAL).date():
-        raise ValueError("Choose a completed period")
-    start = datetime(first.year, first.month, first.day, tzinfo=LOCAL)
-    end = datetime(last.year, last.month, last.day, tzinfo=LOCAL)
-    return start.astimezone(UTC), end.astimezone(UTC)
+    completed_hour = now.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+    start = datetime(first.year, first.month, first.day, tzinfo=LOCAL).astimezone(UTC)
+    end = datetime(last.year, last.month, last.day, tzinfo=LOCAL).astimezone(UTC)
+    if start >= completed_hour:
+        raise ValueError("No completed hours are available for the selected period")
+    return start, min(end, completed_hour)
 
 
 async def manual_test_report(period, value):
-    """Send a selected completed period without changing sent records."""
+    """Send a selected period without changing sent records."""
     start, end = parse_test_period(period, value)
     require_config(test_email=True)
     await collect(start, end)
     identifier = f"TEST-MANUAL-{period.upper()}-{uuid4().hex}"
     first = start.astimezone(LOCAL).date()
-    last = end.astimezone(LOCAL).date() - timedelta(days=1)
+    local_end = end.astimezone(LOCAL)
+    last = local_end.date() - (timedelta(days=1) if local_end.hour == 0 else timedelta())
     db, _, csv_path, body = build_report(start, end, identifier,
         include_monthly_fees=period in ("monthly", "quarterly"),
         check_sent=False, period_label=f"{first} – {last}")
     try:
-        if period in ("daily", "weekly"):
-            note = ("Monthly fixed and peak fees are not included in this report."
-                    if configured_language() == "en" else
-                    "Kuukausittaista perus- ja tehomaksua ei sisällytetä tähän raporttiin.")
-            body += "\n\n" + note + "\n"
         (REPORTS / f"JK51_{identifier}_summary.txt").write_text(body, encoding="utf-8")
         send_email(identifier, body, csv_path, CFG["test_recipient"], is_test=True,
                    subject_identifier=value)
@@ -582,8 +552,6 @@ def _run_action_sync(config, action, data_dir, start=None, end=None):
             REPORTS = ROOT / "reports"
             if action == "collect":
                 asyncio.run(collect())
-            elif action == "test_day":
-                asyncio.run(test_day())
             elif action == "manual_test":
                 asyncio.run(manual_test_report(start, end))
             elif action == "invoice":

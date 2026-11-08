@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.event import async_track_utc_time_change
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN, SERVICE_COLLECT, SERVICE_INVOICE, SERVICE_TEST_DAY
+from .const import DOMAIN, SERVICE_COLLECT, SERVICE_INVOICE
 from .runtime import async_run_action
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,14 +49,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     async def handle_collect(call: ServiceCall) -> None:
         await handle_action(call, "collect")
 
-    async def handle_test_day(call: ServiceCall) -> None:
-        await handle_action(call, "test_day")
-
     async def handle_invoice(call: ServiceCall) -> None:
         await handle_action(call, "invoice")
 
     hass.services.async_register(DOMAIN, SERVICE_COLLECT, handle_collect, schema=_SERVICE_SCHEMA)
-    hass.services.async_register(DOMAIN, SERVICE_TEST_DAY, handle_test_day, schema=_SERVICE_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_INVOICE, handle_invoice, schema=_SERVICE_SCHEMA)
     domain_data[_SERVICES_REGISTERED] = True
 
@@ -76,15 +72,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         local = now.astimezone(_LOCAL)
         if local.hour != 4:
             return
-        due = {"daily"}
-        if local.weekday() == 0:
-            due.add("weekly")
+        due = set()
         if local.day == 1:
             due.add("monthly")
             if local.month in (1, 4, 7, 10):
                 due.add("quarterly")
         # Each action reads the current entry so changes take effect immediately.
-        for period in ("daily", "weekly", "monthly", "quarterly"):
+        for period in ("monthly", "quarterly"):
             if period not in due or period not in entry.data.get("billing_periods", []):
                 continue
             try:

@@ -21,5 +21,4 @@ CONF_GMAIL_PASSWORD = "gmail_app_password"
 CONF_LANGUAGE = "language"
 
 SERVICE_COLLECT = "collect"
-SERVICE_TEST_DAY = "test_day"
 SERVICE_INVOICE = "invoice"

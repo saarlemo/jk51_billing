@@ -58,6 +58,37 @@ class BillingEngineTests(unittest.TestCase):
             engine.build_report(self.start, self.start + timedelta(hours=1), 'empty')
         self.assertFalse(engine.REPORTS.exists())
 
+    def test_partial_month_sends_when_one_hour_has_both_statistics(self):
+        start = datetime(2026, 10, 31, 22, tzinfo=timezone.utc)
+        end = start + timedelta(hours=24)
+        stamp = int(start.timestamp() * 1000)
+        engine.CFG.update(energy_entity='sensor.energy', nordpool_entity='sensor.spot',
+                          test_recipient=['test@example.com'])
+        stats = {'sensor.energy': [{'start': stamp, 'change': 2}],
+                 'sensor.spot': [{'start': stamp, 'mean': 0.1}]}
+        with patch.object(engine, 'parse_test_period', return_value=(start, end)), \
+             patch.object(engine, 'require_config'), \
+             patch.object(engine, 'statistics', new_callable=AsyncMock, return_value=stats), \
+             patch.object(engine, 'send_email') as send:
+            asyncio.run(engine.manual_test_report('monthly', '2026-11'))
+        self.assertEqual(send.call_count, 1)
+        self.assertIn('1/24 hours billed', send.call_args.args[1])
+        self.assertIn('unavailable for 23 hours', send.call_args.args[1])
+        self.assertEqual(send.call_args.args[3], ['test@example.com'])
+
+    def test_no_billable_hours_identifies_missing_statistics(self):
+        engine.CFG.update(energy_entity='sensor.energy', nordpool_entity='sensor.spot')
+        db = engine.database()
+        db.execute('INSERT INTO hours VALUES (?,?,?,?,?)',
+                   (self.start.isoformat(), (self.start + timedelta(hours=1)).isoformat(),
+                    '2', None, 'missing_price'))
+        db.commit(); db.close()
+        with self.assertRaises(RuntimeError) as result:
+            engine.build_report(self.start, self.start + timedelta(hours=2), 'test')
+        self.assertIn('sensor.energy) missing or invalid for 1/2 hours', str(result.exception))
+        self.assertIn('sensor.spot) missing or invalid for 2/2 hours', str(result.exception))
+        self.assertNotIn('TEST-MANUAL', str(result.exception))
+
     def test_sent_quarter_is_not_reissued(self):
         db = engine.database()
         db.execute('INSERT INTO sent VALUES (?,?)', ('2026-Q1', self.start.isoformat()))
@@ -66,14 +97,12 @@ class BillingEngineTests(unittest.TestCase):
             engine.build_report(self.start, self.start + timedelta(hours=1), '2026-Q1')
 
     def test_previous_periods_across_boundaries(self):
-        start, end, ident = engine.previous_period("weekly", date(2026, 1, 5))
-        self.assertEqual((str(start.date()), str(end.date()), ident), ("2025-12-29", "2026-01-05", "2026-W01"))
-        start, end, ident = engine.previous_period("quarterly", date(2026, 1, 1))
-        self.assertEqual((str(start.date()), str(end.date()), ident), ("2025-10-01", "2026-01-01", "2025-Q4"))
-        start, end, _ = engine.previous_period("daily", date(2026, 3, 30))
-        self.assertEqual((end.astimezone(timezone.utc) - start.astimezone(timezone.utc)).total_seconds(), 23 * 3600)
+        start, end, ident = engine.previous_period('quarterly', date(2026, 1, 1))
+        self.assertEqual((str(start.date()), str(end.date()), ident), ('2025-10-01', '2026-01-01', '2025-Q4'))
+        start, end, ident = engine.previous_period('monthly', date(2026, 1, 1))
+        self.assertEqual((str(start.date()), str(end.date()), ident), ('2025-12-01', '2026-01-01', '2025-12'))
         with self.assertRaises(RuntimeError):
-            engine.previous_period("monthly", date(2026, 1, 2))
+            engine.previous_period('monthly', date(2026, 1, 2))
 
     def test_test_cc_isolated_from_production(self):
         engine.CFG.update(gmail_user="sender@example.com", gmail_app_password="secret",
@@ -87,28 +116,25 @@ class BillingEngineTests(unittest.TestCase):
         self.assertEqual(message["Cc"], "test-cc@example.com")
         self.assertNotIn("production@example.com", str(message))
 
-    def test_scheduled_daily_report_omits_monthly_charges_and_sends_once(self):
+    def test_scheduled_monthly_report_sends_once(self):
         end = self.start + timedelta(hours=1)
         db = engine.database()
         db.execute('INSERT INTO hours VALUES (?,?,?,?,?)',
                    (self.start.isoformat(), end.isoformat(), '2', '0.1', 'complete'))
         db.commit(); db.close()
         engine.CFG['recipient'] = ['billing@example.com']
-        with patch.object(engine, 'previous_period', return_value=(self.start, end, '2026-01-01')), \
+        with patch.object(engine, 'previous_period', return_value=(self.start, end, '2026-01')), \
              patch.object(engine, 'require_config'), \
              patch.object(engine, 'collect', new_callable=AsyncMock), \
              patch.object(engine, 'send_email') as send:
-            asyncio.run(engine.scheduled_report('daily', False))
-            asyncio.run(engine.scheduled_report('daily', False))
+            asyncio.run(engine.scheduled_report('monthly', False))
+            asyncio.run(engine.scheduled_report('monthly', False))
         self.assertEqual(send.call_count, 1)
-        self.assertIn('0.32', send.call_args.args[1])
-        self.assertNotIn('9.32', send.call_args.args[1])
+        self.assertIn('9.32', send.call_args.args[1])
 
     def test_manual_period_selection_and_dst(self):
-        now = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
+        now = datetime(2026, 11, 8, 12, 36, tzinfo=timezone.utc)
         for period, value, first, last in [
-            ('daily', '2026-03-29', '2026-03-29', '2026-03-30'),
-            ('weekly', '2026-W01', '2025-12-29', '2026-01-05'),
             ('monthly', '2026-02', '2026-02-01', '2026-03-01'),
             ('quarterly', '2025-Q4', '2025-10-01', '2026-01-01'),
         ]:
@@ -116,13 +142,13 @@ class BillingEngineTests(unittest.TestCase):
                 start, end = engine.parse_test_period(period, value, now)
                 self.assertEqual(str(start.astimezone(engine.LOCAL).date()), first)
                 self.assertEqual(str(end.astimezone(engine.LOCAL).date()), last)
-        start, end = engine.parse_test_period('daily', '2026-03-29', now)
-        self.assertEqual((end - start).total_seconds(), 23 * 3600)
-        start, end = engine.parse_test_period('daily', '2026-10-25', now)
-        self.assertEqual((end - start).total_seconds(), 25 * 3600)
-        for period, value in [('daily', '2026-11-08'), ('weekly', '2026-W99'),
-                              ('monthly', '2026-13'), ('quarterly', '2026-Q5'),
-                              ('quarterly', '2026-Q4')]:
+        for period, value in [('monthly', '2026-11'), ('quarterly', '2026-Q4')]:
+            start, end = engine.parse_test_period(period, value, now)
+            self.assertEqual(end, datetime(2026, 11, 8, 12, tzinfo=timezone.utc))
+        start, end = engine.parse_test_period('monthly', '2026-03', now)
+        self.assertEqual((end - start).total_seconds(), (31 * 24 - 1) * 3600)
+        for period, value in [('monthly', '2026-13'), ('quarterly', '2026-Q5'),
+                              ('monthly', '2026-12'), ('quarterly', '2027-Q1')]:
             with self.subTest(period=period, value=value), self.assertRaises(ValueError):
                 engine.parse_test_period(period, value, now)
 
@@ -138,16 +164,15 @@ class BillingEngineTests(unittest.TestCase):
              patch.object(engine, 'require_config'), \
              patch.object(engine, 'collect', new_callable=AsyncMock) as collect, \
              patch.object(engine, 'send_email') as send:
-            asyncio.run(engine.manual_test_report('daily', '2026-01-01'))
-            asyncio.run(engine.manual_test_report('daily', '2026-01-01'))
+            asyncio.run(engine.manual_test_report('monthly', '2026-01'))
+            asyncio.run(engine.manual_test_report('monthly', '2026-01'))
         self.assertEqual(send.call_count, 2)
         collect.assert_awaited_with(self.start, end)
         self.assertEqual(send.call_args.args[3], ['test@example.com'])
         self.assertTrue(send.call_args.kwargs['is_test'])
-        self.assertEqual(send.call_args.kwargs['subject_identifier'], '2026-01-01')
+        self.assertEqual(send.call_args.kwargs['subject_identifier'], '2026-01')
         self.assertIn('2026-01-01', send.call_args.args[1])
-        self.assertIn('0.32', send.call_args.args[1])
-        self.assertIn('Monthly fixed and peak fees are not included', send.call_args.args[1])
+        self.assertIn('9.32', send.call_args.args[1])
         db = engine.database()
         try:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM sent').fetchone()[0], 0)

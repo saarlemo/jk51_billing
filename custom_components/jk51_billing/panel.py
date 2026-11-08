@@ -68,7 +68,7 @@ def save_config(hass, connection, msg):
                 if not isinstance(value, list) or any(not isinstance(x, str) or "@" not in x or "\n" in x or "\r" in x for x in value):
                     raise ValueError(f"Invalid addresses in {key}")
             elif key == "billing_periods":
-                if not isinstance(value, list) or any(period not in {"daily", "weekly", "monthly", "quarterly"} for period in value) or len(value) != len(set(value)):
+                if not isinstance(value, list) or any(period not in {"monthly", "quarterly"} for period in value) or len(value) != len(set(value)):
                     raise ValueError(f"Invalid periods in {key}")
             elif not isinstance(value, str):
                 raise ValueError(f"{key} must be text")
@@ -83,7 +83,7 @@ def save_config(hass, connection, msg):
 
 @websocket_api.websocket_command({
     vol.Required("type"): "jk51_billing/test/send",
-    vol.Required("period"): vol.In(["daily", "weekly", "monthly", "quarterly"]),
+    vol.Required("period"): vol.In(["monthly", "quarterly"]),
     vol.Required("value"): str,
 })
 @websocket_api.require_admin

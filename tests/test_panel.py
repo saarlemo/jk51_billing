@@ -92,7 +92,7 @@ class PanelTests(unittest.TestCase):
         self.connection.user.is_admin = False
         for handler, message in [(self.panel.get_config, {'id': 1}),
                                  (self.panel.save_config, {'id': 2, 'config': {}}),
-                                 (self.panel.send_test, {'id': 3, 'period': 'daily', 'value': '2026-01-01'})]:
+                                 (self.panel.send_test, {'id': 3, 'period': 'monthly', 'value': '2026-01'})]:
             with self.subTest(handler=handler.__name__), self.assertRaises(Unauthorized):
                 handler(self.hass, self.connection, message)
         self.connection.send_result.assert_not_called()
@@ -101,7 +101,7 @@ class PanelTests(unittest.TestCase):
         async def run():
             self.panel.async_run_action.reset_mock()
             await self.panel.send_test(self.hass, self.connection,
-                                       {'id': 3, 'period': 'daily', 'value': '2026-01-01'})
+                                       {'id': 3, 'period': 'monthly', 'value': '2026-01'})
         asyncio.run(run())
         self.panel.async_run_action.assert_awaited_once()
         self.connection.send_result.assert_called_once_with(3)

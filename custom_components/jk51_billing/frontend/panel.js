@@ -32,8 +32,8 @@ class JK51BillingPanel extends HTMLElement {
       :host{display:block;color:var(--primary-text-color);background:var(--primary-background-color);min-height:100%;font-family:var(--paper-font-body1_-_font-family, sans-serif)}
       header{padding:16px 24px;background:var(--app-header-background-color,var(--primary-color));color:var(--app-header-text-color,white);display:flex;align-items:center;gap:16px;font-size:20px}
       header button{background:none;border:0;color:inherit;font-size:24px;cursor:pointer}
-      main{max-width:720px;margin:auto;padding:24px} form{display:grid;gap:16px} fieldset{border:1px solid var(--divider-color);border-radius:6px;padding:16px;display:grid;gap:16px} legend{font-weight:600} .periods{display:flex;gap:16px;flex-wrap:wrap}.periods label{display:flex;align-items:center;gap:5px}.periods input{width:auto} label{display:grid;gap:6px} input,select{box-sizing:border-box;width:100%;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:4px;font-size:16px} button.save,button.send-test{padding:12px;background:var(--primary-color);color:var(--text-primary-color,white);border:0;border-radius:4px;cursor:pointer} .notice{color:var(--secondary-text-color)}
-    </style><header><button type="button" aria-label="Open sidebar">☰</button>Electricity billing</header><main><p class="notice">Rates must match your contract. Leave a password or token blank to keep the saved value.</p><form></form><p role="status"></p></main>`;
+      main{max-width:720px;margin:auto;padding:24px} form{display:grid;gap:16px} section{display:grid;gap:16px;margin-top:12px} section h2{margin:0;font-size:20px;font-weight:600} .test-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:12px} @media(max-width:420px){.test-row{grid-template-columns:1fr}} .periods{display:flex;gap:16px;flex-wrap:wrap}.periods label{display:flex;align-items:center;gap:5px}.periods input{width:auto} label{display:grid;gap:6px} input,select{box-sizing:border-box;width:100%;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:4px;font-size:16px} button.save,button.send-test{padding:12px;background:var(--primary-color);color:var(--text-primary-color,white);border:0;border-radius:4px;cursor:pointer} .notice{color:var(--secondary-text-color)}
+    </style><header><button type="button" aria-label="Open sidebar">☰</button>Electricity billing</header><main><form></form><p role="status"></p></main>`;
     this.shadowRoot.querySelector("header button").onclick = () => this.dispatchEvent(new CustomEvent("hass-toggle-menu", {bubbles:true, composed:true}));
     const form = this.shadowRoot.querySelector("form");
     for (const [name, label, type] of labels) {
@@ -58,8 +58,8 @@ class JK51BillingPanel extends HTMLElement {
       ["Test billing", "test_periods", "test_recipient", "test_cc"],
       ["Billing", "billing_periods", "recipient", "cc"],
     ]) {
-      const section = document.createElement("fieldset");
-      const legend = document.createElement("legend"); legend.textContent = heading; section.append(legend);
+      const section = document.createElement("section");
+      const title = document.createElement("h2"); title.textContent = heading; section.append(title);
       for (const [key, title] of [[recipients, "Email recipients (comma separated)"], [cc, "Email CC (comma separated)"]]) {
         const label = document.createElement("label"); const span = document.createElement("span"); span.textContent = title;
         const input = document.createElement("input"); input.name = key; input.type = "text";
@@ -69,7 +69,7 @@ class JK51BillingPanel extends HTMLElement {
       if (prefix === "billing_periods") {
         const title = document.createElement("span"); title.textContent = "Automatic emails at 04:30 Helsinki time"; section.append(title);
         const periods = document.createElement("div"); periods.className = "periods";
-        for (const period of ["daily", "weekly", "monthly", "quarterly"]) {
+        for (const period of ["monthly", "quarterly"]) {
           const label = document.createElement("label"); const input = document.createElement("input");
           input.type = "checkbox"; input.name = prefix; input.value = period;
           input.checked = (this.config[prefix] || []).includes(period);
@@ -77,14 +77,13 @@ class JK51BillingPanel extends HTMLElement {
         }
         section.append(periods);
         const notice = document.createElement("small"); notice.className = "notice";
-        notice.textContent = "Selecting multiple periods sends overlapping invoices for the same consumption. Daily and weekly invoices omit monthly fees.";
+        notice.textContent = "Selecting both periods sends overlapping invoices for the same consumption.";
         section.append(notice);
       } else {
         const hint = document.createElement("small"); hint.className = "notice";
-        hint.textContent = "Choose a completed Helsinki calendar period. Daily and weekly reports omit monthly fees; monthly and quarterly reports include them. Save settings before sending; the saved test recipients and CC will be used.";
+        hint.textContent = "Choose a Helsinki calendar period. Save settings before sending; the saved test recipients and CC will be used.";
         section.append(hint);
         for (const [period, labelText, inputType] of [
-          ["daily", "Day", "date"], ["weekly", "Week (Monday–Sunday)", "week"],
           ["monthly", "Month", "month"], ["quarterly", "Quarter", "quarter"]
         ]) {
           const label = document.createElement("label");
@@ -97,12 +96,14 @@ class JK51BillingPanel extends HTMLElement {
               const option = document.createElement("option"); option.value = `${y}-Q${q}`; option.textContent = `Q${q} ${y}`; input.append(option);
             }
           } else input.type = inputType;
-          label.append(title, input); section.append(label);
+          label.append(title, input);
           const send = document.createElement("button"); send.type = "button"; send.className = "send-test";
-          send.textContent = `Send ${period} test bill`; section.append(send);
+          send.textContent = `Send ${period} test bill`;
+          const row = document.createElement("div"); row.className = "test-row";
+          row.append(label, send); section.append(row);
           const result = document.createElement("span"); result.setAttribute("role", "status"); section.append(result);
           send.onclick = async () => {
-            if (!input.value || !input.checkValidity()) { result.textContent = "Choose a valid completed period."; return; }
+            if (!input.value || !input.checkValidity()) { result.textContent = "Choose a valid period."; return; }
             send.disabled = true; result.textContent = "Sending test bill…";
             try {
               await this._hass.callWS({type: "jk51_billing/test/send", period, value: input.value});

@@ -8,16 +8,6 @@ collect:
       selector:
         text:
 
-test_day:
-  name: Send daily test report
-  description: Email yesterday's report to the test recipients and CC.
-  fields:
-    config_entry_id:
-      name: Config entry
-      description: Optional integration entry ID.
-      selector:
-        text:
-
 invoice:
   name: Send quarterly invoice
   description: Build and send the preceding quarter's invoice on a quarterly boundary.

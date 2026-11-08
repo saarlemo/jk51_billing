@@ -30,23 +30,19 @@ The integration provides these Home Assistant actions under the
 `jk51_billing` domain:
 
 - `jk51_billing.collect` refreshes the recent hourly ledger.
-- `jk51_billing.test_day` emails yesterday's report to the test recipients and CC.
 - `jk51_billing.invoice` sends the preceding quarter's invoice on a quarterly
   boundary (January, April, July, or October 1).
 
 Run actions from **Developer tools → Actions**. In the sidebar, **Test billing**
-provides a day, ISO week (Monday–Sunday), month and quarter selector, each with
-a button to email a report for that completed Helsinki calendar period. Save
-settings first: test reports use the saved test recipients and CC. Daily and
-weekly reports omit monthly fixed and peak fees; monthly and quarterly reports
-include them. Test emails are sent only when requested; the integration does
-not schedule them automatically.
+provides month and quarter selectors with buttons to email a report. Save
+settings first: test reports use the saved test recipients and CC. Reports
+include monthly fixed and peak fees. Test emails are sent only when requested.
 
 The **Billing** section has checkboxes for automatic production invoices at
-04:30 Helsinki time for the preceding complete period. No period is enabled by
-default. The same monthly-fee rules apply.
+04:30 Helsinki time for the preceding month or quarter. No period is enabled by
+default.
 
-**Multiple production periods overlap:** selecting daily and monthly, for
+**Multiple production periods overlap:** selecting monthly and quarterly, for
 example, sends separate invoices for some of the same consumption. Select
 periods carefully to avoid charging twice. The integration records successful
 sends for each period in its ledger, but cannot guarantee exactly-once delivery
