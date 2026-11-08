@@ -114,8 +114,12 @@ def email_addresses(value, field, required=True):
 
 
 def require_config(email=False, test_email=False):
-    mandatory = ["ha_url", "ha_token", "nordpool_entity", "spot_vat_multiplier",
+    mandatory = ["ha_url", "ha_token", "energy_entity", "spot_vat_multiplier",
                  "electricity_margin_eur_per_kwh"]
+    cost_type = CFG.get("electricity_cost_type", "spot")
+    if cost_type not in ("spot", "fixed"):
+        raise RuntimeError("Choose spot or fixed electricity pricing")
+    mandatory.append("nordpool_entity" if cost_type == "spot" else "fixed_electricity_eur_per_kwh")
     if email:
         mandatory += ["recipient", "gmail_user", "gmail_app_password"]
     if test_email:
@@ -123,6 +127,13 @@ def require_config(email=False, test_email=False):
     missing = [k for k in mandatory if CFG.get(k) in (None, "", "CHANGE_ME")]
     if missing:
         raise RuntimeError("Configure the integration first: " + ", ".join(missing))
+    if cost_type == "fixed":
+        try:
+            fixed_price = dec(CFG["fixed_electricity_eur_per_kwh"])
+            if not fixed_price.is_finite() or fixed_price < 0:
+                raise ValueError
+        except (ValueError, ArithmeticError):
+            raise RuntimeError("Fixed electricity price must be a finite nonnegative number") from None
     if email:
         email_addresses(CFG["recipient"], "recipient")
         email_addresses(CFG.get("cc", []), "cc", required=False)
@@ -157,7 +168,9 @@ async def statistics(start, end):
             await ws.send_json({
                 "id": 1, "type": "recorder/statistics_during_period",
                 "start_time": start.isoformat(), "end_time": end.isoformat(),
-                "statistic_ids": [CFG["energy_entity"], CFG["nordpool_entity"]],
+                "statistic_ids": ([CFG["energy_entity"], CFG["nordpool_entity"]]
+                                  if CFG.get("electricity_cost_type", "spot") == "spot"
+                                  else [CFG["energy_entity"]]),
                 "period": "hour", "types": ["change", "mean"]
             })
             response = await ws.receive_json()
@@ -199,7 +212,8 @@ async def collect(start=None, end=None):
     validate_hour_alignment(start, end)
     values = await statistics(start, end)
     energy = rows_for(values, CFG["energy_entity"])
-    prices = rows_for(values, CFG["nordpool_entity"])
+    spot_pricing = CFG.get("electricity_cost_type", "spot") == "spot"
+    prices = rows_for(values, CFG["nordpool_entity"]) if spot_pricing else {}
     db = database()
     current = start
     counts = {"complete": 0, "missing_energy": 0, "missing_price": 0}
@@ -209,7 +223,7 @@ async def collect(start=None, end=None):
         p = prices.get(key, {}).get("mean")
         if e is None or dec(e) < 0:
             status = "missing_energy"
-        elif p is None:
+        elif spot_pricing and p is None:
             status = "missing_price"
         else:
             status = "complete"
@@ -258,6 +272,8 @@ def build_report(start, end, identifier, include_monthly_fees=True, check_sent=T
     monthly_fee = dec(CFG["monthly_fee_eur"])
     margin_rate = dec(CFG["electricity_margin_eur_per_kwh"])
     vat_factor = dec(CFG["spot_vat_multiplier"])
+    spot_pricing = CFG.get("electricity_cost_type", "spot") == "spot"
+    fixed_price = None if spot_pricing else dec(CFG["fixed_electricity_eur_per_kwh"])
     totals = {}
     details = []
     current = start.astimezone(UTC)
@@ -268,6 +284,8 @@ def build_report(start, end, identifier, include_monthly_fees=True, check_sent=T
         start_utc, end_utc = start_dt.isoformat(), end_dt.isoformat()
         row = by_start.get(start_utc)
         kwh, price = (row[2], row[3]) if row else (None, None)
+        if not spot_pricing:
+            price = fixed_price
         current = end_dt
         month = start_dt.astimezone(LOCAL).strftime("%Y-%m")
         counts = month_hours.setdefault(month, [0, 0])
@@ -325,21 +343,20 @@ def build_report(start, end, identifier, include_monthly_fees=True, check_sent=T
         first_day = start.astimezone(LOCAL).date()
         local_end = end.astimezone(LOCAL)
         last_day = local_end.date() - (timedelta(days=1) if local_end.hour == 0 else timedelta())
-        raise RuntimeError(
-            f"No billable hours for {first_day}–{last_day}. "
-            f"Energy statistics ({CFG.get('energy_entity', 'not configured')}) "
-            f"missing or invalid for {missing_energy}/{expected} hours; "
-            f"price statistics ({CFG.get('nordpool_entity', 'not configured')}) "
-            f"missing or invalid for {missing_price}/{expected} hours. "
-            "Check these sensors' long-term statistics for the selected period."
-        )
+        message = (f"No billable hours for {first_day}–{last_day}. "
+                   f"Energy statistics ({CFG.get('energy_entity', 'not configured')}) "
+                   f"missing or invalid for {missing_energy}/{expected} hours")
+        if spot_pricing:
+            message += (f"; price statistics ({CFG.get('nordpool_entity', 'not configured')}) "
+                        f"missing or invalid for {missing_price}/{expected} hours")
+        raise RuntimeError(message + ". Check the configured sensors' long-term statistics for the selected period.")
     REPORTS.mkdir(exist_ok=True)
     out = REPORTS / f"JK51_{identifier}_hourly.csv"
     with out.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["start_utc", "end_utc", "start_local", "end_local", "kwh",
-            "average_power_kw", "transfer_tariff", "spot_eur_kwh_incl_vat",
-            "transfer_eur_kwh", "spot_cost_eur",
+            "average_power_kw", "transfer_tariff", "electricity_eur_kwh_incl_vat",
+            "transfer_eur_kwh", "electricity_cost_eur",
             "extra_cost_eur", "hour_cost_eur", "status",
             "margin_eur_kwh", "margin_cost_eur"])
         writer.writerows(details)
@@ -384,11 +401,24 @@ def build_report(start, end, identifier, include_monthly_fees=True, check_sent=T
     # when its hourly consumption/price data is incomplete.
     fixed_count = len(month_hours) if include_monthly_fees else 0
     missing_total = expected - complete_hours
+    if language == "en":
+        electricity_label = "Spot electricity" if spot_pricing else "Fixed electricity"
+        price_qualifier = " (weighted)" if spot_pricing else ""
+        price_missing_sentence = (f" Nord Pool prices were unavailable for {missing_counts['missing_price'] + missing_counts['missing_both']} "
+                                  f"{'hour' if missing_counts['missing_price'] + missing_counts['missing_both'] == 1 else 'hours'}." if spot_pricing else "")
+    else:
+        electricity_label = "Pörssisähkö" if spot_pricing else "Kiinteähintainen sähkö"
+        price_qualifier = " (painotettu)" if spot_pricing else ""
+        price_missing_sentence = (f" Pörssisähkön hintoja ei ollut saatavilla {missing_counts['missing_price'] + missing_counts['missing_both']} h ajalta." if spot_pricing else "")
     body = mail_template(f"invoice_email-{language}.md", {
+        "electricity_label": electricity_label,
+        "price_qualifier": price_qualifier,
+        "price_missing_sentence": price_missing_sentence,
         "report_type": (("lasku" if include_monthly_fees else "testi (ei perusmaksua)")
                         if language == "fi" else ("invoice" if include_monthly_fees else "test report (no monthly fees)")),
         "period": period_label or f"{start.astimezone(LOCAL).date()} - {(end.astimezone(LOCAL) - timedelta(days=1)).date()}",
-        "weighted_spot_eur_kwh": precise(spot_total / quarter_kwh) if quarter_kwh else "0.00000",
+        "weighted_spot_eur_kwh": (precise(spot_total / quarter_kwh) if quarter_kwh else
+                                    precise(fixed_price * vat_factor) if fixed_price is not None else "0.00000"),
         "total_spot_eur": money(spot_total),
         "margin_rate_eur_kwh": str(margin_rate),
         "total_margin_eur": money(margin_total),

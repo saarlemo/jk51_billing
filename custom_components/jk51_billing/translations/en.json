@@ -2,16 +2,22 @@
   "config": {
     "step": {
       "user": {
+        "title": "Electricity pricing",
+        "data": {
+          "electricity_cost_type": "Electricity cost type"
+        }
+      },
+      "setup": {
         "title": "JK51 electricity billing",
-        "description": "Configure the hourly energy and market price statistics, contract rates, and email delivery.",
+        "description": "Configure the energy sensor, contract rates, and email delivery.",
         "data": {
           "energy_entity": "Hourly energy sensor",
-          "nordpool_entity": "Nord Pool price sensor",
+          "nordpool_entity": "Spot price statistics sensor",
           "day_transfer_eur_per_kwh": "Day transfer rate (€/kWh)",
           "night_transfer_eur_per_kwh": "Night transfer rate (€/kWh)",
           "monthly_fee_eur": "Monthly fixed fee (€)",
           "monthly_peak_eur_per_kw": "Monthly peak fee (€/kW)",
-          "spot_vat_multiplier": "Spot price VAT multiplier",
+          "spot_vat_multiplier": "Electricity VAT multiplier",
           "electricity_margin_eur_per_kwh": "Electricity margin (€/kWh)",
           "language": "Report language",
           "recipient": "Invoice recipients (comma separated)",
@@ -20,12 +26,13 @@
           "gmail_user": "Gmail address",
           "gmail_app_password": "Gmail app password",
           "ha_url": "Home Assistant URL",
-          "ha_token": "Home Assistant long-lived access token"
+          "ha_token": "Home Assistant long-lived access token",
+          "fixed_electricity_eur_per_kwh": "Fixed electricity price (€/kWh)"
         }
       }
     },
     "error": {
-      "invalid_settings": "Enter valid numeric rates and at least one recipient for invoices and test reports."
+      "invalid_settings": "Enter valid contract rates, pricing settings, and recipients."
     },
     "abort": {
       "single_instance_allowed": "Only one JK51 billing configuration is supported."

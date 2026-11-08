@@ -88,6 +88,20 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(data['ha_token'], 'private-token')
         self.connection.send_result.assert_called_once_with(2)
 
+    def test_fixed_price_mode_validates_and_saves_zero(self):
+        self.panel.save_config(self.hass, self.connection, {'id': 4, 'config': {
+            'electricity_cost_type': 'fixed', 'fixed_electricity_eur_per_kwh': 0}})
+        data = self.hass.config_entries.async_update_entry.call_args.kwargs['data']
+        self.assertEqual(data['electricity_cost_type'], 'fixed')
+        self.assertEqual(data['fixed_electricity_eur_per_kwh'], 0)
+        self.connection.send_result.assert_called_once_with(4)
+
+    def test_switching_to_spot_requires_a_sensor(self):
+        self.panel.save_config(self.hass, self.connection, {'id': 5, 'config': {
+            'electricity_cost_type': 'spot'}})
+        self.hass.config_entries.async_update_entry.assert_not_called()
+        self.assertIn('spot price', self.connection.send_error.call_args.args[2])
+
     def test_non_admin_cannot_access_any_panel_command(self):
         self.connection.user.is_admin = False
         for handler, message in [(self.panel.get_config, {'id': 1}),

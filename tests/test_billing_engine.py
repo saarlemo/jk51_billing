@@ -55,6 +55,51 @@ class BillingEngineTests(unittest.TestCase):
         self.assertIn('missing_energy', csv_path.read_text())
         self.assertIn('2.000 kWh', body)
 
+    def test_fixed_pricing_uses_fixed_rate_and_needs_no_spot_history(self):
+        end = self.start + timedelta(hours=2)
+        engine.CFG.update(electricity_cost_type='fixed', fixed_electricity_eur_per_kwh='0.10',
+                          spot_vat_multiplier='1.25', energy_entity='sensor.energy')
+        db = engine.database()
+        # Existing rows may contain a spot price or none at all.
+        for offset, old_price in [(0, '0.99'), (1, None)]:
+            start = self.start + timedelta(hours=offset)
+            db.execute('INSERT INTO hours VALUES (?,?,?,?,?)',
+                       (start.isoformat(), (start + timedelta(hours=1)).isoformat(), '2', old_price, 'complete'))
+        db.commit(); db.close()
+        db, _, csv_path, body = engine.build_report(self.start, end, 'fixed', include_monthly_fees=False)
+        db.close()
+        # 4 kWh * (0.10 * 1.25 + 0.01 margin + 0.05 transfer) = 0.74 EUR.
+        self.assertIn('| Fixed electricity | 4.000 kWh | 0.12500 €/kWh | 0.50 € |', body)
+        self.assertIn('0.74', body)
+        self.assertNotIn('Nord Pool prices were unavailable', body)
+        self.assertIn('electricity_eur_kwh_incl_vat', csv_path.read_text())
+
+    def test_fixed_collection_accepts_missing_price_sensor(self):
+        start = self.start
+        end = start + timedelta(hours=1)
+        engine.CFG.update(electricity_cost_type='fixed', fixed_electricity_eur_per_kwh='0',
+                          energy_entity='sensor.energy', ha_url='http://example.test', ha_token='token')
+        stats = {'sensor.energy': [{'start': int(start.timestamp() * 1000), 'change': 2}]}
+        with patch.object(engine, 'statistics', new_callable=AsyncMock, return_value=stats):
+            asyncio.run(engine.collect(start, end))
+        db = engine.database()
+        try:
+            row = db.execute('SELECT kwh, spot_eur_kwh, status FROM hours').fetchone()
+            self.assertEqual(row, ('2', None, 'complete'))
+        finally:
+            db.close()
+        db, _, _, body = engine.build_report(start, end, 'fixed', include_monthly_fees=False)
+        db.close()
+        self.assertIn('| Fixed electricity | 2.000 kWh | 0.00000 €/kWh | 0.00 € |', body)
+
+    def test_fixed_mode_rejects_invalid_price(self):
+        engine.CFG.update(electricity_cost_type='fixed', energy_entity='sensor.energy',
+                          ha_url='http://example.test', ha_token='token')
+        for value in ('-1', 'NaN', 'Infinity'):
+            engine.CFG['fixed_electricity_eur_per_kwh'] = value
+            with self.subTest(value=value), self.assertRaisesRegex(RuntimeError, 'Fixed electricity price'):
+                engine.require_config()
+
     def test_no_billable_hours_blocks_report(self):
         with self.assertRaisesRegex(RuntimeError, 'No billable hours'):
             engine.build_report(self.start, self.start + timedelta(hours=1), 'empty')

@@ -14,13 +14,13 @@ from .const import DOMAIN
 
 PANEL = "jk51-billing"
 FIELDS = {
-    "ha_url", "ha_token", "energy_entity", "nordpool_entity",
+    "ha_url", "ha_token", "energy_entity", "nordpool_entity", "electricity_cost_type", "fixed_electricity_eur_per_kwh",
     "day_transfer_eur_per_kwh", "night_transfer_eur_per_kwh", "monthly_fee_eur",
     "monthly_peak_eur_per_kw", "electricity_margin_eur_per_kwh", "spot_vat_multiplier",
     "recipient", "cc", "test_recipient", "test_cc", "billing_periods", "gmail_user", "gmail_app_password", "language",
 }
 SECRETS = {"ha_token", "gmail_app_password"}
-NUMBERS = {"day_transfer_eur_per_kwh", "night_transfer_eur_per_kwh", "monthly_fee_eur", "monthly_peak_eur_per_kw", "electricity_margin_eur_per_kwh", "spot_vat_multiplier"}
+NUMBERS = {"fixed_electricity_eur_per_kwh", "day_transfer_eur_per_kwh", "night_transfer_eur_per_kwh", "monthly_fee_eur", "monthly_peak_eur_per_kw", "electricity_margin_eur_per_kwh", "spot_vat_multiplier"}
 
 
 def _entry(hass):
@@ -73,6 +73,14 @@ def save_config(hass, connection, msg):
             elif not isinstance(value, str):
                 raise ValueError(f"{key} must be text")
             data[key] = value
+        cost_type = data.get("electricity_cost_type", "spot")
+        if cost_type not in ("spot", "fixed"):
+            raise ValueError("Choose spot or fixed electricity pricing")
+        if "electricity_cost_type" in incoming:
+            if cost_type == "spot" and not data.get("nordpool_entity"):
+                raise ValueError("Choose a spot price statistics sensor")
+            if cost_type == "fixed" and data.get("fixed_electricity_eur_per_kwh") is None:
+                raise ValueError("Enter a fixed electricity price")
         if data.get("language", "fi") not in ("fi", "en"):
             raise ValueError("Unsupported template language")
         hass.config_entries.async_update_entry(entry, data=data)
@@ -112,6 +120,6 @@ async def async_setup_panel(hass: HomeAssistant):
     await panel_custom.async_register_panel(
         hass, webcomponent_name="jk51-billing-panel", frontend_url_path=PANEL,
         sidebar_title="Electricity billing", sidebar_icon="mdi:lightning-bolt",
-        module_url="/jk51_billing_panel/panel.js?v=2", require_admin=True,
+        module_url="/jk51_billing_panel/panel.js?v=3", require_admin=True,
     )
     hass.data[f"{DOMAIN}_panel_registered"] = True

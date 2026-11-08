@@ -1,6 +1,6 @@
 collect:
   name: Refresh hourly ledger
-  description: Query recent hourly meter and Nord Pool statistics into the billing ledger.
+  description: Refresh hourly energy and electricity price statistics in the billing ledger.
   fields:
     config_entry_id:
       name: Config entry

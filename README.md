@@ -1,7 +1,7 @@
 # JK51 Electricity Billing for Home Assistant
 
 JK51 Electricity Billing calculates an hourly electricity bill from Home
-Assistant recorder statistics. It accounts for Nord Pool spot prices, an
+Assistant recorder statistics. It supports spot and fixed electricity prices, an
 additional electricity margin, day/night transfer rates, fixed monthly fees,
 and the highest one-hour average power fee. It includes Finnish and English
 email templates.
@@ -16,13 +16,18 @@ email templates.
 3. Go to **Settings → Devices & services → Add integration**, search for
    **JK51 Electricity Billing**, and complete its setup form.
 4. Open the **Electricity billing** administrator-only sidebar panel to review
-   or edit settings. It includes energy and Nord Pool sensor selectors, rates,
+   or edit settings. It includes an energy sensor selector, electricity pricing, rates,
    language, recipients, Gmail SMTP credentials, and the Home Assistant URL
    and long-lived access token used to retrieve statistics.
 
 Use a Gmail app password rather than your normal Google account password.
-Keep credentials private. Rates, spot price units, VAT treatment, and sensor
-statistics must match your contract and recorder configuration.
+Keep credentials private. Rates, price units, VAT treatment, and sensor
+statistics must match your contract and recorder configuration. The electricity
+price is in €/kWh before the electricity VAT multiplier; set the multiplier to
+1 if the price already includes VAT. The electricity margin is added separately.
+Fixed-price reports use the configured fixed price for the entire selected
+period. Update it when your contract changes and use caution when reporting
+historical periods with a different price.
 
 ## Actions and scheduling
 
@@ -63,16 +68,36 @@ again. If migrating an existing ledger, back it up and place it in this
 directory before sending invoices. Configuration is managed through the
 integration setup and sidebar panel.
 
+## Known limitations
+
+- Billing periods with half-hour or quarter-hour UTC offsets are not supported:
+  the integration rejects them because its hourly statistics cannot represent
+  their boundaries accurately.
+- The energy sensor must provide recorded hourly energy changes in kWh. A power
+  sensor in W or kW cannot be used directly. Spot pricing also requires a sensor
+  with recorded hourly mean prices in €/kWh. Only periods with available
+  statistics can be billed.
+- Calculations use hourly energy and hourly average spot prices. They do not
+  calculate costs at a shorter settlement interval, such as 15 minutes.
+- Day transfer is applied from 07:00 to 22:00 and night transfer from 22:00 to
+  07:00 in the Home Assistant time zone. These times are not configurable.
+- The integration uses the configured rates, pricing type, VAT multiplier,
+  and margin for the whole report; it does not keep a history of contract
+  changes. A report for an earlier period may therefore need different settings.
+- The monthly peak is based on available one-hour energy readings. Missing data
+  can understate the peak and the resulting fee.
+- Email delivery uses Gmail SMTP and requires an app password. Other email
+  providers and authentication methods are not supported.
+- Missed or failed scheduled sends are not retried automatically. If both
+  monthly and quarterly billing are enabled, the invoices overlap.
+
 ## Billing cautions
 
 - This is a self-hosted billing aid, not a utility-certified meter or tax
   invoice.
 - Missing hourly energy or price data is excluded and reported, never treated
   as zero. Partial-month statistics can understate the peak fee.
-- Configure the spot price VAT multiplier for the actual sensor and contract.
+- Configure the electricity VAT multiplier for the price and contract.
 - The monthly peak fee uses the largest one-hour average, not instantaneous or
   15-minute demand.
-- Billing periods and tariffs use the Home Assistant time zone and historical
-  statistics. Periods with non-hour UTC offsets are not supported by hourly
-  statistics and are rejected.
 
