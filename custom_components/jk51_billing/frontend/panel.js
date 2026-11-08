@@ -4,6 +4,12 @@ class JK51BillingPanel extends HTMLElement {
     this.attachShadow({mode: "open"});
     this.loaded = false;
   }
+  connectedCallback() {
+    this.saveBarObserver?.observe(this);
+  }
+  disconnectedCallback() {
+    this.saveBarObserver?.disconnect();
+  }
   set hass(value) {
     this._hass = value;
     if (!this.loaded) { this.loaded = true; this.load(); }
@@ -14,33 +20,44 @@ class JK51BillingPanel extends HTMLElement {
   }
   render() {
     const labels = [
-      ["energy_entity", "Energy statistics sensor", "entity"],
-      ["electricity_cost_type", "Electricity cost type", "cost_type"],
-      ["nordpool_entity", "Spot price statistics sensor (EUR/kWh)", "entity"],
-      ["fixed_electricity_eur_per_kwh", "Fixed electricity price (€/kWh)", "number"],
-      ["language", "Email template language", "language"],
-      ["day_transfer_eur_per_kwh", "Day transfer (€/kWh)", "number"],
-      ["night_transfer_eur_per_kwh", "Night transfer (€/kWh)", "number"],
-      ["day_transfer_start", "Day transfer starts", "time"],
-      ["day_transfer_end", "Day transfer ends", "time"],
-      ["electricity_margin_eur_per_kwh", "Electricity margin (€/kWh)", "number"],
-      ["monthly_fee_eur", "Monthly fee (€)", "number"],
-      ["monthly_peak_eur_per_kw", "Monthly peak fee (€/kW)", "number"],
-      ["spot_vat_multiplier", "Electricity VAT multiplier", "number"],
-      ["gmail_user", "Gmail address", "email"],
-      ["gmail_app_password", "Gmail app password", "password"],
-      ["ha_url", "Home Assistant URL", "url"],
-      ["ha_token", "Home Assistant long-lived token", "password"],
+      ["General settings", null, "energy_entity", "Energy statistics sensor", "entity"],
+      ["General settings", null, "language", "Email template language", "language"],
+      ["Credentials", null, "gmail_user", "Gmail address", "email"],
+      ["Credentials", null, "gmail_app_password", "Gmail app password", "password"],
+      ["Credentials", null, "ha_url", "Home Assistant URL", "url"],
+      ["Credentials", null, "ha_token", "Home Assistant long-lived token", "password"],
+      ["Electricity cost structure", "Electricity", "electricity_cost_type", "Electricity cost type", "cost_type"],
+      ["Electricity cost structure", "Electricity", "nordpool_entity", "Spot price statistics sensor (EUR/kWh)", "entity"],
+      ["Electricity cost structure", "Electricity", "fixed_electricity_eur_per_kwh", "Fixed electricity price (€/kWh)", "number"],
+      ["Electricity cost structure", "Electricity", "electricity_margin_eur_per_kwh", "Electricity margin (€/kWh)", "number"],
+      ["Electricity cost structure", "Electricity", "spot_vat_multiplier", "Electricity VAT multiplier", "number"],
+      ["Electricity cost structure", "Transfer", "day_transfer_eur_per_kwh", "Day transfer (€/kWh)", "number"],
+      ["Electricity cost structure", "Transfer", "night_transfer_eur_per_kwh", "Night transfer (€/kWh)", "number"],
+      ["Electricity cost structure", "Transfer", "day_transfer_start", "Day transfer starts", "time"],
+      ["Electricity cost structure", "Transfer", "day_transfer_end", "Day transfer ends", "time"],
+      ["Electricity cost structure", "Transfer", "monthly_fee_eur", "Monthly fee (€)", "number"],
+      ["Electricity cost structure", "Transfer", "monthly_peak_eur_per_kw", "Monthly peak fee (€/kW)", "number"],
     ];
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;color:var(--primary-text-color);background:var(--primary-background-color);min-height:100%;font-family:var(--paper-font-body1_-_font-family, sans-serif)}
       header{padding:16px 24px;background:var(--app-header-background-color,var(--primary-color));color:var(--app-header-text-color,white);display:flex;align-items:center;gap:16px;font-size:20px}
-      header button{background:none;border:0;color:inherit;font-size:24px;cursor:pointer}
-      [hidden]{display:none!important} main{max-width:720px;margin:auto;padding:24px} form{display:grid;gap:16px} section{display:grid;gap:16px;margin-top:12px} section h2{margin:0;font-size:20px;font-weight:600} .test-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:12px} .test-row label,.test-row input,.test-row select,.test-row button{min-width:0} .test-row button{white-space:normal;overflow-wrap:anywhere} @media(max-width:420px){main{padding:16px}.test-row{gap:8px}} .periods{display:flex;gap:16px;flex-wrap:wrap}.periods label{display:flex;align-items:center;gap:5px}.periods input{width:auto} label{display:grid;gap:6px} input,select{box-sizing:border-box;width:100%;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:4px;font-size:16px} button.save,button.send-test{padding:12px;background:var(--primary-color);color:var(--text-primary-color,white);border:0;border-radius:4px;cursor:pointer} .notice{color:var(--secondary-text-color)}
-    </style><header><button type="button" aria-label="Open sidebar">☰</button>Electricity billing</header><main><form></form><p role="status"></p></main>`;
-    this.shadowRoot.querySelector("header button").onclick = () => this.dispatchEvent(new CustomEvent("hass-toggle-menu", {bubbles:true, composed:true}));
+      [hidden]{display:none!important} main{max-width:720px;margin:auto;padding:24px 24px 100px} form{display:grid;gap:16px} section{display:grid;gap:16px;margin-top:12px} section h2{margin:0;font-size:20px;font-weight:600} section h3{margin:8px 0 0;font-size:17px;font-weight:600} .test-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:12px} .test-row label,.test-row input,.test-row select,.test-row button{min-width:0} .test-row button{white-space:normal;overflow-wrap:anywhere} @media(max-width:420px){main{padding:16px 16px 100px}.test-row{gap:8px}} .periods{display:flex;gap:16px;flex-wrap:wrap}.periods label{display:flex;align-items:center;gap:5px}.periods input{width:auto} label{display:grid;gap:6px} input,select{box-sizing:border-box;width:100%;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:4px;font-size:16px} button.save,button.send-test{padding:12px;background:var(--primary-color);color:var(--text-primary-color,white);border:0;border-radius:4px;cursor:pointer} .save-bar{position:fixed;left:max(16px,calc((100vw - 720px)/2));bottom:max(16px,env(safe-area-inset-bottom));z-index:5;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px)} .save-status{color:var(--primary-text-color);background:var(--card-background-color);border-radius:4px} .save-status:not(:empty){padding:8px} .notice{color:var(--secondary-text-color)}
+    </style><header>Electricity billing</header><main><form></form></main>`;
     const form = this.shadowRoot.querySelector("form");
-    for (const [name, label, type] of labels) {
+    let currentGroup = null;
+    let currentSubgroup = null;
+    let groupSection;
+    for (const [group, subgroup, name, label, type] of labels) {
+      if (group !== currentGroup) {
+        groupSection = document.createElement("section");
+        const heading = document.createElement("h2"); heading.textContent = group;
+        groupSection.append(heading); form.append(groupSection);
+        currentGroup = group; currentSubgroup = null;
+      }
+      if (subgroup && subgroup !== currentSubgroup) {
+        const heading = document.createElement("h3"); heading.textContent = subgroup;
+        groupSection.append(heading); currentSubgroup = subgroup;
+      }
       const wrapper = document.createElement("label");
       const title = document.createElement("span"); title.textContent = label; wrapper.append(title);
       const input = document.createElement(type === "entity" || type === "language" || type === "cost_type" ? "select" : "input");
@@ -58,7 +75,7 @@ class JK51BillingPanel extends HTMLElement {
       const value = this.config[name];
       if (type !== "password") input.value = Array.isArray(value) ? value.join(", ") : (value ?? (name === "language" ? "fi" : name === "electricity_cost_type" ? "spot" : name === "day_transfer_start" ? "07:00" : name === "day_transfer_end" ? "22:00" : ""));
       if (type === "password" && (this.config.configured_secrets || []).includes(name)) input.placeholder = "Saved; leave blank to keep";
-      wrapper.append(input); form.append(wrapper);
+      wrapper.append(input); groupSection.append(wrapper);
     }
     const costType = form.elements.electricity_cost_type;
     const spotField = form.elements.nordpool_entity;
@@ -133,12 +150,22 @@ class JK51BillingPanel extends HTMLElement {
       }
       form.append(section);
     }
-    const button = document.createElement("button"); button.type="submit"; button.className="save"; button.textContent="Save settings"; form.append(button);
+    const saveBar = document.createElement("div"); saveBar.className = "save-bar";
+    const button = document.createElement("button"); button.type="submit"; button.className="save"; button.textContent="Save settings";
+    const saveStatus = document.createElement("span"); saveStatus.className="save-status"; saveStatus.setAttribute("role", "status");
+    saveBar.append(button, saveStatus); form.append(saveBar);
+    const placeSaveBar = () => {
+      saveBar.style.left = `${Math.max(16, Math.round(this.getBoundingClientRect().left + 16))}px`;
+    };
+    this.saveBarObserver?.disconnect();
+    this.saveBarObserver = new ResizeObserver(placeSaveBar);
+    this.saveBarObserver.observe(this);
+    placeSaveBar();
     form.onsubmit = async event => {
       event.preventDefault(); const config = Object.fromEntries(new FormData(form));
       for (const key of ["recipient", "cc", "test_recipient", "test_cc"]) config[key] = config[key].split(",").map(x => x.trim()).filter(Boolean);
       for (const key of ["billing_periods"]) config[key] = [...form.querySelectorAll(`input[name="${key}"]:checked`)].map(input => input.value);
-      const status = this.shadowRoot.querySelector('[role="status"]'); button.disabled=true;
+      const status = saveStatus; button.disabled=true;
       try { await this._hass.callWS({type:"jk51_billing/config/save", config}); status.textContent="Settings saved."; }
       catch (e) { status.textContent=`Could not save: ${e.message}`; }
       finally { button.disabled=false; }
