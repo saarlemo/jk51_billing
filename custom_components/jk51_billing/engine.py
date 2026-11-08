@@ -43,6 +43,11 @@ def mail_template(filename, values):
     template_path = TEMPLATE_ROOT / filename
     if not template_path.is_file():
         raise RuntimeError(f"Missing email template: {template_path}")
+    if filename.endswith("-fi.md"):
+        values = {
+            key: re.sub(r"(?<=\d)\.(?=\d)", ",", value) if isinstance(value, str) else value
+            for key, value in values.items()
+        }
     return Template(template_path.read_text(encoding="utf-8")).substitute(values)
 
 

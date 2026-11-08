@@ -145,6 +145,21 @@ class BillingEngineTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaisesRegex(RuntimeError, 'Fixed electricity price'):
                 engine.require_config()
 
+    def test_finnish_report_uses_comma_without_changing_csv(self):
+        engine.CFG['language'] = 'fi'
+        db = engine.database()
+        db.execute('INSERT INTO hours VALUES (?,?,?,?,?)',
+                   (self.start.isoformat(), (self.start + timedelta(hours=1)).isoformat(), '2.125', '0.1', 'complete'))
+        db.commit(); db.close()
+        db, _, csv_path, body = engine.build_report(self.start, self.start + timedelta(hours=1), 'sample')
+        db.close()
+        self.assertIn('2,125 kWh', body)
+        self.assertIn('0,10000 €/kWh', body)
+        self.assertIn('2,125 kW', body)
+        self.assertIn('€/kk', body)
+        self.assertIn('€9,59', body)
+        self.assertIn('2.125', csv_path.read_text())
+
     def test_no_billable_hours_blocks_report(self):
         with self.assertRaisesRegex(RuntimeError, 'No billable hours'):
             engine.build_report(self.start, self.start + timedelta(hours=1), 'empty')
