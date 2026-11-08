@@ -1,0 +1,25 @@
+"""Constants for the JK51 billing integration."""
+
+DOMAIN = "jk51_billing"
+PLATFORMS: list[str] = []
+
+CONF_HA_URL = "ha_url"
+CONF_HA_TOKEN = "ha_token"
+CONF_ENERGY_ENTITY = "energy_entity"
+CONF_NORDPOOL_ENTITY = "nordpool_entity"
+CONF_DAY_TRANSFER = "day_transfer_eur_per_kwh"
+CONF_NIGHT_TRANSFER = "night_transfer_eur_per_kwh"
+CONF_MONTHLY_FEE = "monthly_fee_eur"
+CONF_MONTHLY_PEAK = "monthly_peak_eur_per_kw"
+CONF_SPOT_VAT = "spot_vat_multiplier"
+CONF_MARGIN = "electricity_margin_eur_per_kwh"
+CONF_RECIPIENT = "recipient"
+CONF_CC = "cc"
+CONF_TEST_RECIPIENT = "test_recipient"
+CONF_GMAIL_USER = "gmail_user"
+CONF_GMAIL_PASSWORD = "gmail_app_password"
+CONF_LANGUAGE = "language"
+
+SERVICE_COLLECT = "collect"
+SERVICE_TEST_DAY = "test_day"
+SERVICE_INVOICE = "invoice"

@@ -1,0 +1,22 @@
+# Examples only: paste selected entries into automations.yaml or create them in the UI.
+# Enable only after checking your rates, recipients, sensor statistics and test report.
+- id: jk51_billing_refresh_ledger
+  alias: JK51 billing - refresh hourly ledger
+  triggers:
+    - trigger: time
+      at: '04:20:00'
+  actions:
+    - action: jk51_billing.collect
+  mode: single
+
+- id: jk51_billing_quarterly_invoice
+  alias: JK51 billing - quarterly invoice
+  triggers:
+    - trigger: time
+      at: '03:30:00'
+  conditions:
+    - condition: template
+      value_template: '{{ now().day == 1 and now().month in [1, 4, 7, 10] }}'
+  actions:
+    - action: jk51_billing.invoice
+  mode: single

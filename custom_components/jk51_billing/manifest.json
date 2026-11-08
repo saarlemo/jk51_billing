@@ -1,0 +1,14 @@
+{
+  "domain": "jk51_billing",
+  "name": "JK51 Electricity Billing",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "panel_custom"
+  ],
+  "documentation": "https://github.com/",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}
