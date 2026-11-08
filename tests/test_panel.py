@@ -113,11 +113,39 @@ class PanelTests(unittest.TestCase):
         self.hass.config_entries.async_update_entry.assert_not_called()
         self.assertIn('whole hours', self.connection.send_error.call_args.args[2])
 
+    def test_saves_email_templates_and_rejects_invalid_fields(self):
+        self.panel.save_config(self.hass, self.connection, {'id': 8, 'config': {
+            'billing_name': 'House panel', 'email_subject_en': '${billing_name} ${identifier}',
+            'email_body_en': '# ${billing_name}\nTotal: ${total_eur}'}})
+        saved = self.hass.config_entries.async_update_entry.call_args.kwargs['data']
+        self.assertEqual(saved['billing_name'], 'House panel')
+        self.assertEqual(saved['email_body_en'], '# ${billing_name}\nTotal: ${total_eur}')
+        for invalid in [
+            {'email_body_en': '${not_a_field}'},
+            {'email_body_fi': 'Invalid $'},
+            {'email_subject_en': 'Bad\nsubject'},
+            {'billing_name': 'Bad\nname'},
+        ]:
+            with self.subTest(invalid=invalid):
+                self.hass.config_entries.async_update_entry.reset_mock()
+                self.panel.save_config(self.hass, self.connection, {'id': 9, 'config': invalid})
+                self.hass.config_entries.async_update_entry.assert_not_called()
+                self.assertTrue(self.connection.send_error.called)
+
+    def test_admin_can_load_default_templates(self):
+        expected = {'fi': {'subject': 'subject', 'body': 'body'}}
+        self.hass.async_add_executor_job = AsyncMock(return_value=expected)
+        async def run():
+            await self.panel.get_default_templates(self.hass, self.connection, {'id': 10})
+        asyncio.run(run())
+        self.connection.send_result.assert_called_once_with(10, expected)
+
     def test_non_admin_cannot_access_any_panel_command(self):
         self.connection.user.is_admin = False
         for handler, message in [(self.panel.get_config, {'id': 1}),
                                  (self.panel.save_config, {'id': 2, 'config': {}}),
-                                 (self.panel.send_test, {'id': 3, 'period': 'monthly', 'value': '2026-01'})]:
+                                 (self.panel.send_test, {'id': 3, 'period': 'monthly', 'value': '2026-01'}),
+                                 (self.panel.get_default_templates, {'id': 4})]:
             with self.subTest(handler=handler.__name__), self.assertRaises(Unauthorized):
                 handler(self.hass, self.connection, message)
         self.connection.send_result.assert_not_called()

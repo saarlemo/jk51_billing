@@ -12,6 +12,7 @@ from .runtime import async_run_action
 
 from .const import DOMAIN
 from .transfer import day_window
+from .email_templates import default_templates, validate_template
 
 PANEL = "jk51-billing"
 FIELDS = {
@@ -19,6 +20,7 @@ FIELDS = {
     "day_transfer_eur_per_kwh", "night_transfer_eur_per_kwh", "day_transfer_start", "day_transfer_end", "monthly_fee_eur",
     "monthly_peak_eur_per_kw", "electricity_margin_eur_per_kwh", "spot_vat_multiplier",
     "recipient", "cc", "test_recipient", "test_cc", "billing_periods", "gmail_user", "gmail_app_password", "language",
+    "billing_name", "email_subject_fi", "email_subject_en", "email_body_fi", "email_body_en",
 }
 SECRETS = {"ha_token", "gmail_app_password"}
 NUMBERS = {"fixed_electricity_eur_per_kwh", "day_transfer_eur_per_kwh", "night_transfer_eur_per_kwh", "monthly_fee_eur", "monthly_peak_eur_per_kw", "electricity_margin_eur_per_kwh", "spot_vat_multiplier"}
@@ -74,6 +76,12 @@ def save_config(hass, connection, msg):
             elif not isinstance(value, str):
                 raise ValueError(f"{key} must be text")
             data[key] = value
+        name = data.get("billing_name", "JK51")
+        if not name.strip() or "\n" in name or "\r" in name:
+            raise ValueError("Billing name must be a non-empty single line")
+        for language in ("fi", "en"):
+            validate_template(data.get(f"email_subject_{language}", ""), subject=True)
+            validate_template(data.get(f"email_body_{language}", ""))
         day_start, day_end = day_window(data)
         if "day_transfer_start" in incoming or "day_transfer_end" in incoming:
             data["day_transfer_start"], data["day_transfer_end"] = day_start, day_end
@@ -91,6 +99,14 @@ def save_config(hass, connection, msg):
         connection.send_result(msg["id"])
     except (ValueError, TypeError) as err:
         connection.send_error(msg["id"], "invalid_config", str(err))
+
+
+@websocket_api.websocket_command({vol.Required("type"): "jk51_billing/templates/defaults"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def get_default_templates(hass, connection, msg):
+    """Return the bundled templates for the email editor."""
+    connection.send_result(msg["id"], await hass.async_add_executor_job(default_templates))
 
 
 @websocket_api.websocket_command({
@@ -121,9 +137,10 @@ async def async_setup_panel(hass: HomeAssistant):
     websocket_api.async_register_command(hass, get_config)
     websocket_api.async_register_command(hass, save_config)
     websocket_api.async_register_command(hass, send_test)
+    websocket_api.async_register_command(hass, get_default_templates)
     await panel_custom.async_register_panel(
         hass, webcomponent_name="jk51-billing-panel", frontend_url_path=PANEL,
         sidebar_title="Electricity billing", sidebar_icon="mdi:lightning-bolt",
-        module_url="/jk51_billing_panel/panel.js?v=6", require_admin=True,
+        module_url="/jk51_billing_panel/panel.js?v=7", require_admin=True,
     )
     hass.data[f"{DOMAIN}_panel_registered"] = True

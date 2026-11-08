@@ -29,6 +29,20 @@ Fixed-price reports use the configured fixed price for the entire selected
 period. Update it when your contract changes and use caution when reporting
 historical periods with a different price.
 
+## Email content
+
+Set the billing name under **General settings**. It is used in the default email
+subject, message, and attachment filename. Under **Email content**, edit the
+subject and Markdown message for the selected language. Finnish and English
+have separate templates. Save changes before sending; **Restore default
+template** restores the template for the selected language.
+
+Use placeholders such as `${billing_name}`, `${period}`, `${total_kwh}`,
+`${total_eur}`, and `${pmax_rows}` in the message. The subject supports
+`${billing_name}`, `${report_label}`, and `${identifier}`. Keep the placeholders
+for information you want to include; use `$$` for a literal dollar sign. The
+attached CSV is generated separately from the message template.
+
 ## Actions and scheduling
 
 The integration provides these Home Assistant actions under the

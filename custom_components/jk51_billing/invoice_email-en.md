@@ -1,4 +1,4 @@
-# JK51 electricity invoice
+# ${billing_name} electricity invoice
 
 Meter data was unavailable for ${missing_power_hours} ${missing_power_unit}.${price_missing_sentence} These hours are excluded from billing.
 

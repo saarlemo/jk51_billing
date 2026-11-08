@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 import aiohttp
 
 from .transfer import day_window, is_day_hour
+from .email_templates import DEFAULT_NAME, DEFAULT_SUBJECT, validate_template
 
 TEMPLATE_ROOT = Path(__file__).resolve().parent
 ROOT = TEMPLATE_ROOT
@@ -45,10 +46,15 @@ def mail_template(filename, values):
         raise RuntimeError(f"Missing email template: {template_path}")
     if filename.endswith("-fi.md"):
         values = {
-            key: re.sub(r"(?<=\d)\.(?=\d)", ",", value) if isinstance(value, str) else value
+            key: re.sub(r"(?<=\d)\.(?=\d)", ",", value)
+            if isinstance(value, str) and key != "billing_name" else value
             for key, value in values.items()
         }
-    return Template(template_path.read_text(encoding="utf-8")).substitute(values)
+    language = filename.removeprefix("invoice_email-").removesuffix(".md")
+    custom_body = CFG.get(f"email_body_{language}") if filename.startswith("invoice_email-") else None
+    if custom_body:
+        validate_template(custom_body)
+    return Template(custom_body or template_path.read_text(encoding="utf-8")).substitute(values)
 
 
 def configured_language():
@@ -419,6 +425,7 @@ def build_report(start, end, identifier, include_monthly_fees=True, check_sent=T
         price_qualifier = " (painotettu)" if spot_pricing else ""
         price_missing_sentence = (f" Pörssisähkön hintoja ei ollut saatavilla {missing_counts['missing_price'] + missing_counts['missing_both']} h ajalta." if spot_pricing else "")
     body = mail_template(f"invoice_email-{language}.md", {
+        "billing_name": CFG.get("billing_name") or DEFAULT_NAME,
         "electricity_label": electricity_label,
         "price_qualifier": price_qualifier,
         "price_missing_sentence": price_missing_sentence,
@@ -469,14 +476,22 @@ def send_email(identifier, body, attachment, recipient, is_test=False, subject_i
     if cc_addresses:
         msg["Cc"] = ", ".join(cc_addresses)
     subject_identifier = subject_identifier or identifier
-    if configured_language() == "en":
-        msg["Subject"] = f"JK51 test report {subject_identifier}" if is_test else f"JK51 electricity invoice {subject_identifier}"
-    else:
-        msg["Subject"] = f"JK51 testilasku {subject_identifier}" if is_test else f"JK51 sähkölasku {subject_identifier}"
+    language = configured_language()
+    name = CFG.get("billing_name") or DEFAULT_NAME
+    if "\n" in name or "\r" in name:
+        raise RuntimeError("Billing name must be a single line")
+    report_label = (("test report" if is_test else "electricity invoice") if language == "en"
+                    else ("testilasku" if is_test else "sähkölasku"))
+    subject_template = CFG.get(f"email_subject_{language}") or DEFAULT_SUBJECT
+    validate_template(subject_template, subject=True)
+    msg["Subject"] = Template(subject_template).substitute(
+        billing_name=name, report_label=report_label, identifier=subject_identifier)
     msg.set_content(body)
     msg.add_alternative(render_markdown(body), subtype="html")
+    safe_name = re.sub(r"[^\w.-]+", "_", name, flags=re.UNICODE).strip("._") or "electricity"
+    safe_period = re.sub(r"[^\w.-]+", "_", subject_identifier, flags=re.UNICODE).strip("._") or "report"
     msg.add_attachment(attachment.read_bytes(), maintype="text", subtype="csv",
-                       filename=attachment.name)
+                       filename=f"{safe_name}_{safe_period}_hourly.csv")
     with smtplib.SMTP("smtp.gmail.com", 587, timeout=40) as smtp:
         smtp.starttls()
         smtp.login(CFG["gmail_user"], CFG["gmail_app_password"])

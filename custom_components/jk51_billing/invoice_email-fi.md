@@ -1,4 +1,4 @@
-# JK51 sähkölasku
+# ${billing_name} sähkölasku
 
 Sähkömittarin tietoja ei ollut saatavilla ${missing_power_hours} h ajalta.${price_missing_sentence} Näitä tunteja ei laskuteta.
 

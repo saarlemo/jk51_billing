@@ -245,6 +245,35 @@ class BillingEngineTests(unittest.TestCase):
             engine._run_action_sync({}, 'collect', Path(self.temp.name), timezone_name='America/New_York')
         self.assertEqual(seen, ['America/New_York'])
 
+    def test_custom_email_body_uses_billing_name_and_finnish_decimals(self):
+        engine.CFG.update(language='fi', billing_name='Paneeli 1.2',
+                          email_body_fi='# ${billing_name}\nKulutus ${total_kwh}\nSumma ${total_eur}')
+        db = engine.database()
+        db.execute('INSERT INTO hours VALUES (?,?,?,?,?)',
+                   (self.start.isoformat(), (self.start + timedelta(hours=1)).isoformat(), '2.125', '0.1', 'complete'))
+        db.commit(); db.close()
+        db, _, _, body = engine.build_report(self.start, self.start + timedelta(hours=1), 'sample')
+        db.close()
+        self.assertIn('# Paneeli 1.2', body)
+        self.assertIn('Kulutus 2,125', body)
+        self.assertIn('Summa 9,59', body)
+
+    def test_custom_subject_and_default_subject(self):
+        engine.CFG.update(gmail_user='sender@example.com', gmail_app_password='secret',
+                          billing_name='Cottage', language='en',
+                          email_subject_en='${billing_name}: ${report_label} ${identifier}')
+        attachment = Path(self.temp.name) / 'report.csv'
+        attachment.write_text('example')
+        with patch.object(engine.smtplib, 'SMTP') as smtp:
+            engine.send_email('2026-01', 'body', attachment, ['test@example.com'], is_test=True)
+            message = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+            self.assertEqual(message['Subject'], 'Cottage: test report 2026-01')
+            self.assertEqual(next(message.iter_attachments()).get_filename(), 'Cottage_2026-01_hourly.csv')
+            del engine.CFG['email_subject_en']
+            engine.send_email('2026-Q1', 'body', attachment, ['bill@example.com'])
+            message = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+            self.assertEqual(message['Subject'], 'Cottage electricity invoice 2026-Q1')
+
     def test_test_cc_isolated_from_production(self):
         engine.CFG.update(gmail_user="sender@example.com", gmail_app_password="secret",
                           cc=["production@example.com"], test_cc=["test-cc@example.com"])

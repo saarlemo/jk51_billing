@@ -15,11 +15,18 @@ class JK51BillingPanel extends HTMLElement {
     if (!this.loaded) { this.loaded = true; this.load(); }
   }
   async load() {
-    try { this.config = await this._hass.callWS({type: "jk51_billing/config/get"}); this.render(); }
+    try {
+      [this.config, this.emailDefaults] = await Promise.all([
+        this._hass.callWS({type: "jk51_billing/config/get"}),
+        this._hass.callWS({type: "jk51_billing/templates/defaults"}),
+      ]);
+      this.render();
+    }
     catch (e) { this.shadowRoot.textContent = `Unable to load settings: ${e.message}`; }
   }
   render() {
     const labels = [
+      ["General settings", null, "billing_name", "Billing name", "text"],
       ["General settings", null, "energy_entity", "Energy statistics sensor", "entity"],
       ["General settings", null, "language", "Email template language", "language"],
       ["Credentials", null, "gmail_user", "Gmail address", "email"],
@@ -41,7 +48,7 @@ class JK51BillingPanel extends HTMLElement {
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;color:var(--primary-text-color);background:var(--primary-background-color);min-height:100%;font-family:var(--paper-font-body1_-_font-family, sans-serif)}
       header{padding:16px 24px;background:var(--app-header-background-color,var(--primary-color));color:var(--app-header-text-color,white);display:flex;align-items:center;gap:16px;font-size:20px}
-      [hidden]{display:none!important} main{max-width:720px;margin:auto;padding:24px 24px 100px} form{display:grid;gap:16px} section{display:grid;gap:16px;margin-top:12px} section h2{margin:0;font-size:20px;font-weight:600} section h3{margin:8px 0 0;font-size:17px;font-weight:600} .test-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:12px} .test-row label,.test-row input,.test-row select,.test-row button{min-width:0} .test-row button{white-space:normal;overflow-wrap:anywhere} @media(max-width:420px){main{padding:16px 16px 100px}.test-row{gap:8px}} .periods{display:flex;gap:16px;flex-wrap:wrap}.periods label{display:flex;align-items:center;gap:5px}.periods input{width:auto} label{display:grid;gap:6px} input,select{box-sizing:border-box;width:100%;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:4px;font-size:16px} button.save,button.send-test{padding:12px;background:var(--primary-color);color:var(--text-primary-color,white);border:0;border-radius:4px;cursor:pointer} .save-bar{position:fixed;left:max(16px,calc((100vw - 720px)/2));bottom:max(16px,env(safe-area-inset-bottom));z-index:5;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px)} .save-status{color:var(--primary-text-color);background:var(--card-background-color);border-radius:4px} .save-status:not(:empty){padding:8px} .notice{color:var(--secondary-text-color)}
+      [hidden]{display:none!important} main{max-width:720px;margin:auto;padding:24px 24px 100px} form{display:grid;gap:16px} section{display:grid;gap:16px;margin-top:12px} section h2{margin:0;font-size:20px;font-weight:600} section h3{margin:8px 0 0;font-size:17px;font-weight:600} .test-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:12px} .test-row label,.test-row input,.test-row select,.test-row button{min-width:0} .test-row button{white-space:normal;overflow-wrap:anywhere} @media(max-width:420px){main{padding:16px 16px 100px}.test-row{gap:8px}} .periods{display:flex;gap:16px;flex-wrap:wrap}.periods label{display:flex;align-items:center;gap:5px}.periods input{width:auto} label{display:grid;gap:6px} input,select,textarea{box-sizing:border-box;width:100%;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:4px;font-size:16px} button.save,button.send-test{padding:12px;background:var(--primary-color);color:var(--text-primary-color,white);border:0;border-radius:4px;cursor:pointer} .save-bar{position:fixed;left:max(16px,calc((100vw - 720px)/2));bottom:max(16px,env(safe-area-inset-bottom));z-index:5;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px)} .save-status{color:var(--primary-text-color);background:var(--card-background-color);border-radius:4px} .save-status:not(:empty){padding:8px} .notice{color:var(--secondary-text-color)}
     </style><header>Electricity billing</header><main><form></form></main>`;
     const form = this.shadowRoot.querySelector("form");
     let currentGroup = null;
@@ -71,9 +78,9 @@ class JK51BillingPanel extends HTMLElement {
         for (const [value, text] of [["spot", "Spot"], ["fixed", "Fixed"]]) { const option = document.createElement("option"); option.value=value; option.textContent=text; input.append(option); }
       } else if (type === "language") {
         for (const [value, text] of [["fi", "Suomi"], ["en", "English"]]) { const option = document.createElement("option"); option.value=value; option.textContent=text; input.append(option); }
-      } else { input.type=type; if (type === "number") { input.min="0"; input.step="any"; } if (type === "time") { input.step="3600"; input.required=true; } if (type === "password") input.autocomplete="new-password"; }
+      } else { input.type=type; if (type === "number") { input.min="0"; input.step="any"; } if (type === "time") { input.step="3600"; input.required=true; } if (name === "billing_name") input.required=true; if (type === "password") input.autocomplete="new-password"; }
       const value = this.config[name];
-      if (type !== "password") input.value = Array.isArray(value) ? value.join(", ") : (value ?? (name === "language" ? "fi" : name === "electricity_cost_type" ? "spot" : name === "day_transfer_start" ? "07:00" : name === "day_transfer_end" ? "22:00" : ""));
+      if (type !== "password") input.value = Array.isArray(value) ? value.join(", ") : (value ?? (name === "language" ? "fi" : name === "billing_name" ? "JK51" : name === "electricity_cost_type" ? "spot" : name === "day_transfer_start" ? "07:00" : name === "day_transfer_end" ? "22:00" : ""));
       if (type === "password" && (this.config.configured_secrets || []).includes(name)) input.placeholder = "Saved; leave blank to keep";
       wrapper.append(input); groupSection.append(wrapper);
     }
@@ -89,6 +96,37 @@ class JK51BillingPanel extends HTMLElement {
     };
     costType.addEventListener("change", updatePriceFields);
     updatePriceFields();
+    const emailSection = document.createElement("section");
+    const emailHeading = document.createElement("h2"); emailHeading.textContent = "Email content"; emailSection.append(emailHeading);
+    const help = document.createElement("small"); help.className = "notice";
+    help.textContent = "Templates follow the selected email language. Keep the placeholders needed in your message; use $$ for a literal dollar sign.";
+    emailSection.append(help);
+    const subjectLabel = document.createElement("label");
+    const subjectTitle = document.createElement("span"); subjectTitle.textContent = "Email subject";
+    const subjectInput = document.createElement("input"); subjectInput.type = "text";
+    subjectLabel.append(subjectTitle, subjectInput); emailSection.append(subjectLabel);
+    const subjectHelp = document.createElement("small"); subjectHelp.className = "notice";
+    subjectHelp.textContent = "Subject placeholders: ${billing_name}, ${report_label}, ${identifier}."; emailSection.append(subjectHelp);
+    const bodyLabel = document.createElement("label");
+    const bodyTitle = document.createElement("span"); bodyTitle.textContent = "Email message (Markdown)";
+    const bodyInput = document.createElement("textarea"); bodyInput.rows = 18;
+    bodyLabel.append(bodyTitle, bodyInput); emailSection.append(bodyLabel);
+    const reset = document.createElement("button"); reset.type = "button"; reset.textContent = "Restore default template"; emailSection.append(reset);
+    form.append(emailSection);
+    const languageField = form.elements.language;
+    const drafts = {};
+    for (const language of ["fi", "en"]) {
+      drafts[language] = {
+        subject: this.config[`email_subject_${language}`] || this.emailDefaults[language].subject,
+        body: this.config[`email_body_${language}`] || this.emailDefaults[language].body,
+      };
+    }
+    let editingLanguage = languageField.value;
+    const storeDraft = () => { drafts[editingLanguage] = {subject: subjectInput.value, body: bodyInput.value}; };
+    const showDraft = () => { subjectInput.value = drafts[editingLanguage].subject; bodyInput.value = drafts[editingLanguage].body; };
+    languageField.addEventListener("change", () => { storeDraft(); editingLanguage = languageField.value; showDraft(); });
+    reset.onclick = () => { drafts[editingLanguage] = {...this.emailDefaults[editingLanguage]}; showDraft(); };
+    showDraft();
     for (const [heading, prefix, recipients, cc] of [
       ["Test billing", "test_periods", "test_recipient", "test_cc"],
       ["Billing", "billing_periods", "recipient", "cc"],
@@ -163,6 +201,13 @@ class JK51BillingPanel extends HTMLElement {
     placeSaveBar();
     form.onsubmit = async event => {
       event.preventDefault(); const config = Object.fromEntries(new FormData(form));
+      storeDraft();
+      for (const language of ["fi", "en"]) {
+        for (const part of ["subject", "body"]) {
+          const value = drafts[language][part];
+          config[`email_${part}_${language}`] = value === this.emailDefaults[language][part] ? "" : value;
+        }
+      }
       for (const key of ["recipient", "cc", "test_recipient", "test_cc"]) config[key] = config[key].split(",").map(x => x.trim()).filter(Boolean);
       for (const key of ["billing_periods"]) config[key] = [...form.querySelectorAll(`input[name="${key}"]:checked`)].map(input => input.value);
       const status = saveStatus; button.disabled=true;

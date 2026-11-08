@@ -42,7 +42,7 @@ class TemplateLanguageTests(unittest.TestCase):
         invoice = self.module.mail_template(
             f"invoice_email-{language}.md", dict.fromkeys(re.findall(
                 r"\$\{([^}]+)\}", (Path(self.module.TEMPLATE_ROOT) / f"invoice_email-{language}.md").read_text()), "value"))
-        self.assertIn("# JK51 electricity invoice", invoice)
+        self.assertIn("# value electricity invoice", invoice)
         self.assertIn("Monthly power fee", self.module.mail_template(
             f"pmax_row-{language}.md", {
                 "month_label": "1/2026", "pmax_kw": "2.000",
